@@ -28,12 +28,12 @@ classifiers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nfl_draft_scraper"]
+packages = ["nfl_draft_scraper"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src"]
+src = ["."]
 extend-exclude = [
     ".venv",
     ".git",
@@ -82,10 +82,7 @@ reportMissingTypeStubs = false
 venvPath = "."
 venv = ".venv"
 pythonPlatform = "Linux"
-executionEnvironments = [
-    { root = "src" },
-    { root = "tests" },
-]
+executionEnvironments = [{ root = "." }]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -97,11 +94,11 @@ addopts = [
     "--cov-report=term-missing",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
-pythonpath = ["src"]
+pythonpath = ["."]
 
 [tool.coverage.run]
 branch = true
-source = ["src/nfl_draft_scraper"]
+source = ["nfl_draft_scraper"]
 omit = ["config.py", "config-*.py", "*/config.py", "*/config-*.py"]
 
 [tool.coverage.report]
