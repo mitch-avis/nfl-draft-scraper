@@ -1,0 +1,5 @@
+colorama
+pyright
+pytest
+pytest-cov
+ruff
