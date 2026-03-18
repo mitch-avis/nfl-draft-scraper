@@ -83,7 +83,7 @@ def _calculate_career_av(career_row: pd.DataFrame, av_by_year: dict[str, int]) -
     """Return the summed career AV from the 'Career' row or the sum of yearly AVs if missing."""
     if not career_row.empty:
         # sportsipy puts career sum in 'approximate_value'
-        raw = career_row["approximate_value"].fillna(0).astype(float).iat[0]
+        raw = typing.cast(float, career_row["approximate_value"].fillna(0).astype(float).iat[0])
         return int(raw)
     return sum(av_by_year.values())
 
