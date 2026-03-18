@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 # Project directory configurations
-ROOT_DIR = Path(__file__).parent.parent.parent
+ROOT_DIR = Path(__file__).parent.parent
 DATA_PATH = os.path.join(ROOT_DIR, "data")
 
 START_YEAR = 2018
