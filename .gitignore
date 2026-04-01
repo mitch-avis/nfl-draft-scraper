@@ -57,3 +57,7 @@ data/
 
 # Pyright log
 pyright.log
+
+# AI Files
+.agents/
+.github/
