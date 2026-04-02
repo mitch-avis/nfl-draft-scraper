@@ -4,19 +4,24 @@ Retrieves player statistics, cleans the data, and computes AV by year, career AV
 career AV. The results are saved to a CSV file.
 """
 
+import argparse
+import logging
 import os
-import time
 import typing
+
+os.environ["SPORTSIPY_CHROME_COOKIES"] = "1"
 
 import numpy as np
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+import polars as pl
 from sportsipy.nfl.roster import Player
 
 from nfl_draft_scraper import constants
 from nfl_draft_scraper.utils.csv_utils import read_df_from_csv
 from nfl_draft_scraper.utils.logger import log
+
+# Suppress noisy GNOME Keyring tracebacks from Chrome cookie extraction
+logging.getLogger("sportsipy.chrome_cookies").setLevel(logging.WARNING)
 
 
 def _get_at_index(df: pd.DataFrame, idx: typing.Hashable) -> int | str:
@@ -28,63 +33,30 @@ def _get_at_index(df: pd.DataFrame, idx: typing.Hashable) -> int | str:
     return typing.cast(int | str, idx)
 
 
-def _get_table_id_for_position(position: str) -> str:
-    """Return the appropriate Pro-Football-Reference table id for a given position code."""
-    table_map = {
-        "QB": "passing",
-        "RB": "rushing_and_receiving",
-        "WR": "rushing_and_receiving",
-        "TE": "rushing_and_receiving",
-        "OL": "games_played",
-        "DL": "defense",
-        "LB": "defense",
-        "DB": "defense",
-        "LS": "defense",
-        "K": "kicking",
-        "P": "punting",
-    }
-    return table_map.get(position, "games_played")
+def _clean_stats_df(stats_df: pl.DataFrame) -> pl.DataFrame:
+    """Remove rows with null or empty season values."""
+    return stats_df.filter(pl.col("season").is_not_null() & (pl.col("season") != ""))
 
 
-def _clean_stats_df(stats_df: pd.DataFrame) -> pd.DataFrame:
-    """Remove rows with invalid season index and rename index to 'season'."""
-    idx_series = stats_df.index.to_series()
-    valid_idx = idx_series.notna() & (idx_series != "")
-    if isinstance(stats_df.index, pd.MultiIndex):
-        valid_idx = valid_idx & (idx_series != ("",))
-    stats_df = stats_df.loc[valid_idx]
-    stats_df = stats_df.reset_index()
-    stats_df = stats_df.rename(columns={"index": "season"})
-    return stats_df
-
-
-def _get_av_by_year(years_df: pd.DataFrame, all_years: list[int]) -> dict[str, int]:
+def _get_av_by_year(years_df: pl.DataFrame, all_years: list[int]) -> dict[str, int]:
     """Build a dict mapping each year in all_years to its approximate value (AV).
 
-    NaNs are treated as zero.
+    Nulls are treated as zero.
     """
     av_by_year = {str(y): 0 for y in all_years}
-    for _, stat_row in years_df.iterrows():
-        year_val = stat_row["season"]
-        year = str(year_val)
-        # Only process if year is a digit string and in all_years
+    for row in years_df.iter_rows(named=True):
+        year = str(row["season"])
         if not year.isdigit():
             continue
-        year_int = int(year)
-        if year_int not in all_years:
+        if int(year) not in all_years:
             continue
-        raw = stat_row.get("approximate_value", 0)
-        val = 0 if raw is None or pd.isna(raw) else int(raw)
-        av_by_year[year] = val
+        raw = row.get("approximate_value", 0)
+        av_by_year[year] = 0 if raw is None else int(raw)
     return av_by_year
 
 
-def _calculate_career_av(career_row: pd.DataFrame, av_by_year: dict[str, int]) -> int:
-    """Return the summed career AV from the 'Career' row or the sum of yearly AVs if missing."""
-    if not career_row.empty:
-        # sportsipy puts career sum in 'approximate_value'
-        raw = typing.cast(float, career_row["approximate_value"].fillna(0).astype(float).iat[0])
-        return int(raw)
+def _calculate_career_av(av_by_year: dict[str, int]) -> int:
+    """Return the career AV as the sum of yearly AVs within the tracked year range."""
     return sum(av_by_year.values())
 
 
@@ -104,14 +76,10 @@ def _calculate_av(player_id: str, all_years: list[int]) -> tuple[dict[str, int],
     player = Player(player_id)
     if player.dataframe is None:
         raise ValueError(f"No dataframe for player {player_id}")
-    stats_df = _clean_stats_df(typing.cast(pd.DataFrame, player.dataframe))
-    career_row_df = typing.cast(pd.DataFrame, stats_df[stats_df["season"] == "Career"])
-    # Filter and sort non-career rows
-    years_mask = stats_df["season"] != "Career"
-    years_df = typing.cast(pd.DataFrame, stats_df[years_mask].copy())
-    years_df = typing.cast(pd.DataFrame, years_df.sort_values(by=["season"]))
+    stats_df = _clean_stats_df(player.dataframe)
+    years_df = stats_df.filter(pl.col("season") != "Career").sort("season")
     av_by_year = _get_av_by_year(years_df, all_years)
-    career_av = _calculate_career_av(career_row_df, av_by_year)
+    career_av = _calculate_career_av(av_by_year)
     weighted_career_av = _calculate_weighted_career_av(av_by_year, all_years)
     return av_by_year, career_av, weighted_career_av
 
@@ -154,18 +122,14 @@ def _initialize_draft_picks_df(
     return df
 
 
-def _is_nonzero(value: typing.Any) -> bool:
-    """Return True if value is a number and not zero."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return False
-    try:
-        return float(value) != 0.0
-    except (TypeError, ValueError):
-        return False
+def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
+    """Update AV using sportsipy and checkpoint regularly.
 
+    Args:
+        force: If True, re-scrape every player regardless of av_complete status.
+        checkpoint_every: Save a checkpoint CSV after this many players are processed.
 
-def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
-    """Single pass: update AV using sportsipy, fall back to PFR HTML, and checkpoint regularly."""
+    """
     draft_path = os.path.join(constants.DATA_PATH, "cleaned_draft_picks.csv")
     out_path = os.path.join(constants.DATA_PATH, "cleaned_draft_picks_with_av.csv")
     checkpoint_path = os.path.join(
@@ -173,33 +137,19 @@ def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
     )
     all_years = list(range(constants.START_YEAR, constants.END_YEAR + 1))
     av_cols = [str(y) for y in all_years]
-    # current_year_col = str(constants.END_YEAR)
 
     df = _initialize_draft_picks_df(draft_path, checkpoint_path, av_cols)
-    if "av_complete" not in df.columns:
-        df["av_complete"] = False
 
     processed = 0
     for idx, row_data in df.iterrows():
         av_complete = bool(row_data.get("av_complete", False))
 
-        # current_year_val = row_data.get(current_year_col, np.nan)
-        # Skip if already complete and current-year AV is nonzero
-        # if av_complete and _is_nonzero(current_year_val):
-        #     continue
-
-        # Skip if already complete
-        if av_complete:
+        # Skip already-complete rows unless force mode is enabled
+        if av_complete and not force:
             continue
 
         pid = row_data.get("pfr_player_id")
         name = row_data.get("pfr_player_name")
-        pos = row_data.get("category")
-        season = int(row_data.get("season") or 0)
-
-        if season < 2024:
-            log.info("ℹ️  Skipping %s; season %s < 2024", name, season)
-            continue
 
         if pid is None or (isinstance(pid, float) and pd.isna(pid)) or str(pid).strip() == "":
             _handle_av_error(df, idx, av_cols)
@@ -207,7 +157,6 @@ def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
             continue
 
         row = _get_at_index(df, idx)
-        success = False
         try:
             av_by_year, career_av, w_av = _calculate_av(str(pid), all_years)
             for col in av_cols:
@@ -215,7 +164,6 @@ def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
             df.at[row, "career"] = career_av
             df.at[row, "weighted_career"] = w_av
             df.at[row, "av_complete"] = True
-            success = True
             log.info(
                 "✔️  AV via sportsipy: %s (%s) career=%s weighted=%s",
                 name,
@@ -225,24 +173,6 @@ def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
             )
         except (ValueError, KeyError, AttributeError) as e:
             log.warning("⚠️  sportsipy error for %s (%s): %s", name, pid, e)
-
-        if not success:
-            try:
-                av_by_year, c_av, w_av = _scrape_player_av_fallback(
-                    str(pid), str(name), str(pos), all_years
-                )
-                if av_by_year is not None:
-                    for col in av_cols:
-                        df.at[row, col] = av_by_year[col]
-                    df.at[row, "career"] = c_av
-                    df.at[row, "weighted_career"] = w_av
-                    df.at[row, "av_complete"] = True
-                    success = True
-                    log.info("🌐 AV via PFR: %s (%s)", name, pid)
-            except (requests.RequestException, ValueError, AttributeError) as e:
-                log.warning("⚠️  PFR fallback error for %s (%s): %s", name, pid, e)
-
-        if not success:
             _handle_av_error(df, idx, av_cols)
 
         processed += 1
@@ -257,69 +187,26 @@ def _update_av_with_fallback(checkpoint_every: int = 20) -> None:
     log.info("✔️  AV update done, wrote %s", out_path)
 
 
-def _parse_av_by_year_from_pfr(games_table, all_years):
-    """Parse per‑season AV values from a PFR HTML table, ignoring header rows."""
-    av_by_year = {str(y): 0 for y in all_years}
-    for row in games_table.tbody.find_all("tr"):
-        if row.get("class") and "thead" in row.get("class"):
-            continue
-        season_cell = row.find("th", {"data-stat": "year_id"})
-        av_cell = row.find("td", {"data-stat": "av"})
-        if not season_cell or not av_cell:
-            continue
-        year = season_cell.text.strip()
-        year_av = av_cell.text.strip()
-        if year.isdigit() and year_av.isdigit() and year in av_by_year:
-            av_by_year[year] = int(year_av)
-    return av_by_year
-
-
-def _parse_career_av_from_pfr(
-    games_table: BeautifulSoup | typing.Any, av_by_year: dict[str, int]
-) -> int:
-    """Extract the career AV from the table footer, or sum yearly AV if not present.
-
-    Accepts either a BeautifulSoup or Tag object.
-    """
-    tfoot = games_table.find("tfoot")
-    if tfoot:
-        career_row = tfoot.find("tr")
-        if career_row is not None:
-            cell = career_row.find("td", {"data-stat": "av"})
-            if cell and cell.text.strip().isdigit():
-                return int(cell.text.strip())
-    return sum(av_by_year.values())
-
-
-def _calculate_weighted_from_pfr(av_by_year: dict[str, int], all_years: list[int]) -> float:
-    """Calculate weighted AV from a PFR scrape, same weights as sportsipy version."""
-    yearly = [av_by_year[str(y)] for y in all_years]
-    sorted_av = sorted(yearly, reverse=True)
-    weights = [max(1 - 0.05 * i, 0) for i in range(len(sorted_av))]
-    return round(sum(a * w for a, w in zip(sorted_av, weights, strict=False)), 1)
-
-
-def _scrape_player_av_fallback(
-    player_id: str, player_name: str, player_pos: str, all_years: list[int]
-) -> tuple[dict[str, int] | None, int | None, float | None]:
-    """On failure of sportsipy, fetch and parse AV tables directly from PFR HTML."""
-    url = f"https://www.pro-football-reference.com/players/{player_id[0]}/{player_id}.htm"
-    resp = requests.get(url, timeout=10)
-    time.sleep(3)
-    if resp.status_code != 200:
-        log.warning("🌐 PFR page fail for %s %s", player_name, player_id)
-        return None, None, None
-    soup = BeautifulSoup(resp.text, "html.parser")
-    tbl_id = _get_table_id_for_position(player_pos)
-    table = soup.find("table", id=tbl_id)
-    if table is None:
-        log.warning("🌐 No PFR table for %s %s", player_name, player_id)
-        return None, None, None
-    av_by_year = _parse_av_by_year_from_pfr(table, all_years)
-    c_av = _parse_career_av_from_pfr(table, av_by_year)
-    w_av = _calculate_weighted_from_pfr(av_by_year, all_years)
-    return av_by_year, c_av, w_av
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for the AV scraper."""
+    parser = argparse.ArgumentParser(
+        description="Scrape and update Approximate Value (AV) data for NFL draft picks.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Re-scrape all players, ignoring previously completed rows.",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=20,
+        help="Save a checkpoint CSV after this many players are processed (default: 20).",
+    )
+    return parser
 
 
 if __name__ == "__main__":
-    _update_av_with_fallback()
+    args = _build_parser().parse_args()
+    _update_av(force=args.force, checkpoint_every=args.checkpoint_every)
