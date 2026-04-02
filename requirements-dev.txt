@@ -4,8 +4,14 @@ colorama==0.4.6
     # via -r requirements-dev.in
 coverage==7.13.5
     # via pytest-cov
+execnet==2.1.2
+    # via pytest-xdist
 iniconfig==2.3.0
     # via pytest
+jinja2==3.1.6
+    # via pytest-html
+markupsafe==3.0.3
+    # via jinja2
 nodeenv==1.10.0
     # via pyright
 packaging==26.0
@@ -22,9 +28,25 @@ pytest==9.0.2
     # via
     #   -r requirements-dev.in
     #   pytest-cov
+    #   pytest-html
+    #   pytest-metadata
+    #   pytest-sugar
+    #   pytest-xdist
 pytest-cov==7.1.0
+    # via -r requirements-dev.in
+pytest-html==4.2.0
+    # via -r requirements-dev.in
+pytest-metadata==3.1.1
+    # via
+    #   -r requirements-dev.in
+    #   pytest-html
+pytest-sugar==1.1.1
+    # via -r requirements-dev.in
+pytest-xdist==3.8.0
     # via -r requirements-dev.in
 ruff==0.15.8
     # via -r requirements-dev.in
+termcolor==3.3.0
+    # via pytest-sugar
 typing-extensions==4.15.0
     # via pyright

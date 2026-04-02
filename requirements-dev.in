@@ -2,4 +2,8 @@ colorama
 pyright
 pytest
 pytest-cov
+pytest-html
+pytest-metadata
+pytest-sugar
+pytest-xdist
 ruff
