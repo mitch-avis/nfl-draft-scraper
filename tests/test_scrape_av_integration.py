@@ -1,15 +1,13 @@
 """Tests for nfl_draft_scraper.scrape_av — integration-level tests."""
 
 import os
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
 from nfl_draft_scraper.scrape_av import (
-    _calculate_weighted_from_pfr,
+    _calculate_weighted_career_av,
     _initialize_draft_picks_df,
     _save_checkpoint,
-    _scrape_player_av_fallback,
 )
 
 
@@ -70,71 +68,13 @@ class TestSaveCheckpoint:
         assert len(result) == 1
 
 
-class TestCalculateWeightedFromPfr:
-    """Tests for _calculate_weighted_from_pfr."""
+class TestCalculateWeightedCareerAvIntegration:
+    """Integration test for _calculate_weighted_career_av used by both paths."""
 
-    def test_same_as_sportsipy_version(self):
-        """Verify same as sportsipy version."""
+    def test_weighted_av_formula(self):
+        """Verify weighted AV applies 5% declining weights to sorted yearly values."""
         av_by_year = {"2020": 10, "2021": 8, "2022": 6}
-        result = _calculate_weighted_from_pfr(av_by_year, [2020, 2021, 2022])
+        result = _calculate_weighted_career_av(av_by_year, [2020, 2021, 2022])
         # sorted: [10, 8, 6], weights: [1.0, 0.95, 0.9]
         expected = round(10 * 1.0 + 8 * 0.95 + 6 * 0.9, 1)
         assert result == expected
-
-
-class TestScrapePlayerAvFallback:
-    """Tests for _scrape_player_av_fallback."""
-
-    @patch("nfl_draft_scraper.scrape_av.requests.get")
-    def test_returns_none_on_bad_status(self, mock_get):
-        """Verify returns none on bad status."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-        mock_get.return_value = mock_resp
-
-        result = _scrape_player_av_fallback("AbcdXy01", "Test Player", "QB", [2020])
-        assert result == (None, None, None)
-
-    @patch("nfl_draft_scraper.scrape_av.requests.get")
-    def test_returns_none_on_missing_table(self, mock_get):
-        """Verify returns none on missing table."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = "<html><body><p>No tables here</p></body></html>"
-        mock_get.return_value = mock_resp
-
-        result = _scrape_player_av_fallback("AbcdXy01", "Test Player", "QB", [2020])
-        assert result == (None, None, None)
-
-    @patch("nfl_draft_scraper.scrape_av.requests.get")
-    @patch("nfl_draft_scraper.scrape_av.time.sleep")
-    def test_parses_valid_page(self, mock_sleep, mock_get):
-        """Verify parses valid page."""
-        html = """
-        <html><body>
-        <table id="passing">
-            <tbody>
-                <tr>
-                    <th data-stat="year_id">2020</th>
-                    <td data-stat="av">7</td>
-                </tr>
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td data-stat="av">7</td>
-                </tr>
-            </tfoot>
-        </table>
-        </body></html>
-        """
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = html
-        mock_get.return_value = mock_resp
-
-        av_by_year, career, weighted = _scrape_player_av_fallback(
-            "AbcdXy01", "Test Player", "QB", [2020]
-        )
-        assert av_by_year == {"2020": 7}
-        assert career == 7
-        assert weighted == 7.0
