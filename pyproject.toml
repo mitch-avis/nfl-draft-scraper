@@ -27,6 +27,15 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
 ]
 
+[project.optional-dependencies]
+bot-evasion = [
+    "curl_cffi",
+    "playwright",
+    "camoufox",
+    "cryptography",
+    "secretstorage",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["nfl_draft_scraper"]
 
