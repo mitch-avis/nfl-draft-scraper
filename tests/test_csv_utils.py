@@ -12,7 +12,7 @@ class TestSaveCsv:
 
     def test_writes_csv_file(self, tmp_path, monkeypatch):
         """Verify writes csv file."""
-        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", str(tmp_path))
+        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", tmp_path)
         records = [{"name": "Alice", "rank": 1}, {"name": "Bob", "rank": 2}]
         save_csv("test.csv", records)
         path = os.path.join(str(tmp_path), "test.csv")

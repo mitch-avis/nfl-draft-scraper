@@ -1,9 +1,13 @@
 """CSV utility functions."""
 
+from __future__ import annotations
+
 import csv
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -11,10 +15,10 @@ from nfl_draft_scraper import constants
 from nfl_draft_scraper.utils.logger import log
 
 
-def save_csv(file_name: str, records: list) -> None:
+def save_csv(file_name: str, records: list[dict[str, Any]]) -> None:
     """Save the records to a CSV file."""
-    os.makedirs(constants.DATA_PATH, exist_ok=True)
-    file_path = os.path.join(constants.DATA_PATH, file_name)
+    constants.DATA_PATH.mkdir(parents=True, exist_ok=True)
+    file_path = constants.DATA_PATH / file_name
     with open(file_path, "w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=records[0].keys())
         writer.writeheader()
@@ -22,7 +26,7 @@ def save_csv(file_name: str, records: list) -> None:
 
 
 def read_write_data(
-    data_name: str, func: Callable, *args, force_refresh: bool = False, **kwargs
+    data_name: str, func: Callable[..., Any], *args, force_refresh: bool = False, **kwargs
 ) -> pd.DataFrame:
     """Read data from CSV or generate it using a specified function, then write it back.
 
@@ -43,7 +47,7 @@ def read_write_data(
     """
     # Initialize an empty DataFrame
     dataframe = pd.DataFrame()
-    file_path = f"{constants.DATA_PATH}/{data_name}.csv"
+    file_path = str(constants.DATA_PATH / f"{data_name}.csv")
 
     # Check if the CSV file exists and read it if force_refresh is not True
     if os.path.isfile(file_path) and not force_refresh:
@@ -51,7 +55,7 @@ def read_write_data(
 
     # If the DataFrame is empty (file doesn't exist) or force_refresh is True, generate the data
     if dataframe.empty or force_refresh:
-        log.debug("* Calling %s()", func.__name__)
+        log.debug("* Calling %s()", getattr(func, "__name__", repr(func)))
         dataframe = pd.DataFrame(func(*args, **kwargs))
         # Write the generated DataFrame to a CSV file
         write_df_to_csv(dataframe, file_path)
@@ -59,7 +63,7 @@ def read_write_data(
     return dataframe
 
 
-def read_df_from_csv(file_path: str, check_exists: bool = True) -> pd.DataFrame:
+def read_df_from_csv(file_path: str | Path, check_exists: bool = True) -> pd.DataFrame:
     """Read a DataFrame from a CSV file.
 
     If check_exists is True, the function first checks if the file exists. If it does not, logs an
@@ -84,7 +88,7 @@ def read_df_from_csv(file_path: str, check_exists: bool = True) -> pd.DataFrame:
     return dataframe
 
 
-def write_df_to_csv(dataframe: pd.DataFrame, file_path: str, index: bool = True) -> None:
+def write_df_to_csv(dataframe: pd.DataFrame, file_path: str | Path, index: bool = True) -> None:
     """Write a DataFrame to a CSV file.
 
     If the directory for the file does not exist, it is created. The DataFrame is then written to

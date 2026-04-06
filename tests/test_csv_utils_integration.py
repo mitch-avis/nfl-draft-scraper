@@ -10,7 +10,7 @@ class TestReadWriteData:
 
     def test_generates_data_when_file_missing(self, tmp_path, monkeypatch):
         """Verify generates data when file missing."""
-        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", str(tmp_path))
+        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", tmp_path)
 
         def generate():
             """Verify generate."""
@@ -22,7 +22,7 @@ class TestReadWriteData:
 
     def test_reads_existing_data(self, tmp_path, monkeypatch):
         """Verify reads existing data."""
-        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", str(tmp_path))
+        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", tmp_path)
 
         df = pd.DataFrame({"a": [10, 20]})
         df.to_csv(tmp_path / "existing.csv", index=True)
@@ -41,7 +41,7 @@ class TestReadWriteData:
 
     def test_force_refresh_regenerates(self, tmp_path, monkeypatch):
         """Verify force refresh regenerates."""
-        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", str(tmp_path))
+        monkeypatch.setattr("nfl_draft_scraper.utils.csv_utils.constants.DATA_PATH", tmp_path)
 
         df = pd.DataFrame({"a": [10, 20]})
         df.to_csv(tmp_path / "refresh.csv", index=True)
