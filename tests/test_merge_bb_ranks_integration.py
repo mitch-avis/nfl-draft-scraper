@@ -17,25 +17,39 @@ class TestReorderAndSave:
         df = pd.DataFrame(
             {
                 "round": [1],
+                "round_pick": [1],
                 "pick": [1],
                 "team": ["JAX"],
+                "pfr_player_id": ["LawrTr00"],
                 "pfr_player_name": ["Trevor Lawrence"],
                 "position": ["QB"],
                 "category": ["O"],
                 "college": ["Clemson"],
                 "MDDB Rank": [1.0],
                 "JLBB Rank": [1.0],
-                "AvgRank": [1.0],
+                "Consensus": [1.0],
+                "JL_Avg": [1.5],
+                "JL_SD": [0.5],
+                "JL_Sources": [10],
+                "Sources": [16],
                 "2021": [5],
                 "career": [5],
                 "weighted_career": [5.0],
             }
         )
-        path = str(tmp_path / "output.csv")
+        path = tmp_path / "output.csv"
         _reorder_and_save(df, path, ["2021", "career", "weighted_career"])
         result = pd.read_csv(path)
         assert "player" in result.columns
+        assert "overall_pick" in result.columns
         assert "pfr_player_name" not in result.columns
+        assert "pfr_player_id" in result.columns
+        assert "Consensus" in result.columns
+        assert "JL_Avg" in result.columns
+        assert "JL_SD" in result.columns
+        assert "JL_Sources" in result.columns
+        assert "Sources" in result.columns
+        assert "AvgRank" not in result.columns
 
 
 class TestMergeBigBoardRanksForYear:
@@ -44,7 +58,7 @@ class TestMergeBigBoardRanksForYear:
     def test_merges_ranks(self, tmp_path, monkeypatch):
         """Verify merges ranks."""
         monkeypatch.setattr(
-            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", str(tmp_path)
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
 
         picks_df = pd.DataFrame(
@@ -68,9 +82,15 @@ class TestMergeBigBoardRanksForYear:
         bb_df = pd.DataFrame(
             {
                 "Player": ["Joe Burrow", "Tee Higgins"],
+                "Position": ["QB", "WR"],
+                "School": ["LSU", "Clemson"],
                 "MDDB": [1, 25],
                 "JLBB": [1, 30],
-                "AvgRank": [1.0, 27.5],
+                "JL_Avg": [1.5, 28.0],
+                "JL_SD": [0.5, 3.0],
+                "JL_Sources": [10, 8],
+                "Consensus": [1.2, 26.1],
+                "Sources": [16, 14],
             }
         )
         bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
@@ -82,12 +102,18 @@ class TestMergeBigBoardRanksForYear:
         result = pd.read_csv(output)
         assert "MDDB Rank" in result.columns
         assert "JLBB Rank" in result.columns
+        assert "Consensus" in result.columns
+        assert "JL_Avg" in result.columns
+        assert "JL_SD" in result.columns
+        assert "JL_Sources" in result.columns
+        assert "Sources" in result.columns
+        assert "AvgRank" not in result.columns
         assert len(result) == 2
 
     def test_skips_missing_picks_file(self, tmp_path, monkeypatch):
         """Verify skips missing picks file."""
         monkeypatch.setattr(
-            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", str(tmp_path)
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
         # Should not raise
         _merge_big_board_ranks_for_year(2020)
@@ -95,7 +121,7 @@ class TestMergeBigBoardRanksForYear:
     def test_skips_missing_bb_file(self, tmp_path, monkeypatch):
         """Verify skips missing bb file."""
         monkeypatch.setattr(
-            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", str(tmp_path)
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
         picks_df = pd.DataFrame(
             {
@@ -117,7 +143,7 @@ class TestMergeBigBoardRanksForYear:
     def test_skips_empty_year(self, tmp_path, monkeypatch):
         """Verify skips empty year."""
         monkeypatch.setattr(
-            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", str(tmp_path)
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
         picks_df = pd.DataFrame(
             {
@@ -133,7 +159,20 @@ class TestMergeBigBoardRanksForYear:
             }
         )
         picks_df.to_csv(tmp_path / "cleaned_draft_picks_with_av.csv", index=False)
-        bb_df = pd.DataFrame({"Player": ["P1"], "MDDB": [1], "JLBB": [1], "AvgRank": [1.0]})
+        bb_df = pd.DataFrame(
+            {
+                "Player": ["P1"],
+                "Position": ["QB"],
+                "School": ["School1"],
+                "MDDB": [1],
+                "JLBB": [1],
+                "JL_Avg": [1.5],
+                "JL_SD": [0.5],
+                "JL_Sources": [10],
+                "Consensus": [1.2],
+                "Sources": [16],
+            }
+        )
         bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
         # Year 2020 has no picks — should not raise
         _merge_big_board_ranks_for_year(2020)
@@ -145,7 +184,7 @@ class TestMain:
     def test_iterates_all_years(self, tmp_path, monkeypatch):
         """Verify iterates all years."""
         monkeypatch.setattr(
-            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", str(tmp_path)
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
         monkeypatch.setattr("nfl_draft_scraper.merge_bb_ranks_to_picks.constants.START_YEAR", 2020)
         monkeypatch.setattr("nfl_draft_scraper.merge_bb_ranks_to_picks.constants.END_YEAR", 2020)
@@ -170,9 +209,15 @@ class TestMain:
         bb_df = pd.DataFrame(
             {
                 "Player": ["Joe Burrow"],
+                "Position": ["QB"],
+                "School": ["LSU"],
                 "MDDB": [1],
                 "JLBB": [1],
-                "AvgRank": [1.0],
+                "JL_Avg": [1.5],
+                "JL_SD": [0.5],
+                "JL_Sources": [10],
+                "Consensus": [1.2],
+                "Sources": [16],
             }
         )
         bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
