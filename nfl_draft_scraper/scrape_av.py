@@ -4,6 +4,8 @@ Retrieves player statistics, cleans the data, and computes AV by year, career AV
 career AV. The results are saved to a CSV file.
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
@@ -14,6 +16,7 @@ os.environ["SPORTSIPY_CHROME_COOKIES"] = "1"
 import numpy as np
 import pandas as pd
 import polars as pl
+from sportsipy.nfl.constants import PLAYER_SCHEME
 from sportsipy.nfl.roster import Player
 
 from nfl_draft_scraper import constants
@@ -22,6 +25,24 @@ from nfl_draft_scraper.utils.logger import log
 
 # Suppress noisy GNOME Keyring tracebacks from Chrome cookie extraction
 logging.getLogger("sportsipy.chrome_cookies").setLevel(logging.WARNING)
+
+# PFR uses 'data-stat="team_name_abbr"' in stat tables (passing, defense, …) but
+# keeps the older 'data-stat="team"' in the games_played table (used for OL, P, K,
+# etc.). sportsipy's default scheme only matches the latter. Use a CSS union
+# selector so that Player objects correctly populate team_abbreviation regardless
+# of which table supplies the data.
+PLAYER_SCHEME["team_abbreviation"] = 'td[data-stat="team"], td[data-stat="team_name_abbr"]'
+
+# Franchises that relocated within the tracking window. Maps each historical or
+# current abbreviation to the full set of abbreviations for the same franchise.
+FRANCHISE_EQUIVALENTS: dict[str, frozenset[str]] = {
+    "SDG": frozenset({"SDG", "LAC"}),
+    "LAC": frozenset({"SDG", "LAC"}),
+    "OAK": frozenset({"OAK", "LVR"}),
+    "LVR": frozenset({"OAK", "LVR"}),
+    "STL": frozenset({"STL", "LAR"}),
+    "LAR": frozenset({"STL", "LAR"}),
+}
 
 
 def _get_at_index(df: pd.DataFrame, idx: typing.Hashable) -> int | str:
@@ -55,6 +76,28 @@ def _get_av_by_year(years_df: pl.DataFrame, all_years: list[int]) -> dict[str, i
     return av_by_year
 
 
+def _get_draft_team_av_by_year(
+    years_df: pl.DataFrame, draft_team: str, all_years: list[int]
+) -> dict[str, int]:
+    """Build a dict mapping each year to AV earned on the drafting franchise only.
+
+    Uses ``FRANCHISE_EQUIVALENTS`` to account for team relocations (e.g. SDG → LAC).
+    Years where the player is on a different franchise are recorded as zero.
+    """
+    franchise_set = FRANCHISE_EQUIVALENTS.get(draft_team, frozenset({draft_team}))
+    av_by_year: dict[str, int] = {str(y): 0 for y in all_years}
+    for row in years_df.iter_rows(named=True):
+        year = str(row["season"])
+        if not year.isdigit() or int(year) not in all_years:
+            continue
+        team = row.get("team_abbreviation")
+        if team is None or team not in franchise_set:
+            continue
+        raw = row.get("approximate_value", 0)
+        av_by_year[year] = 0 if raw is None else int(raw)
+    return av_by_year
+
+
 def _calculate_career_av(av_by_year: dict[str, int]) -> int:
     """Return the career AV as the sum of yearly AVs within the tracked year range."""
     return sum(av_by_year.values())
@@ -68,10 +111,13 @@ def _calculate_weighted_career_av(av_by_year: dict[str, int], all_years: list[in
     return round(sum(av * w for av, w in zip(sorted_av, weights, strict=False)), 1)
 
 
-def _calculate_av(player_id: str, all_years: list[int]) -> tuple[dict[str, int], int, float]:
+def _calculate_av(
+    player_id: str, all_years: list[int], draft_team: str
+) -> tuple[dict[str, int], int, float, int, float]:
     """Retrieve a Player object, clean its stats, and compute AV.
 
-    Return AV by year, career AV, and weighted career AV.
+    Return (av_by_year, career_av, weighted_career_av,
+    draft_team_career_av, draft_team_weighted_career_av).
     """
     player = Player(player_id)
     if player.dataframe is None:
@@ -81,7 +127,10 @@ def _calculate_av(player_id: str, all_years: list[int]) -> tuple[dict[str, int],
     av_by_year = _get_av_by_year(years_df, all_years)
     career_av = _calculate_career_av(av_by_year)
     weighted_career_av = _calculate_weighted_career_av(av_by_year, all_years)
-    return av_by_year, career_av, weighted_career_av
+    dt_av_by_year = _get_draft_team_av_by_year(years_df, draft_team, all_years)
+    dt_career_av = _calculate_career_av(dt_av_by_year)
+    dt_weighted_career_av = _calculate_weighted_career_av(dt_av_by_year, all_years)
+    return av_by_year, career_av, weighted_career_av, dt_career_av, dt_weighted_career_av
 
 
 def _handle_av_error(draft_df: pd.DataFrame, idx: typing.Hashable, av_columns: list[str]) -> None:
@@ -93,6 +142,8 @@ def _handle_av_error(draft_df: pd.DataFrame, idx: typing.Hashable, av_columns: l
         draft_df.at[row, col] = np.nan
     draft_df.at[row, "career"] = np.nan
     draft_df.at[row, "weighted_career"] = np.nan
+    draft_df.at[row, "draft_team_career"] = np.nan
+    draft_df.at[row, "draft_team_weighted_career"] = np.nan
     draft_df.at[row, "av_complete"] = False
 
 
@@ -116,7 +167,12 @@ def _initialize_draft_picks_df(
     else:
         df = read_df_from_csv(draft_path)
         # add the AV columns
-        for col in av_columns + ["career", "weighted_career"]:
+        for col in av_columns + [
+            "career",
+            "weighted_career",
+            "draft_team_career",
+            "draft_team_weighted_career",
+        ]:
             df[col] = np.nan
         df["av_complete"] = False
     return df
@@ -130,11 +186,9 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
         checkpoint_every: Save a checkpoint CSV after this many players are processed.
 
     """
-    draft_path = os.path.join(constants.DATA_PATH, "cleaned_draft_picks.csv")
-    out_path = os.path.join(constants.DATA_PATH, "cleaned_draft_picks_with_av.csv")
-    checkpoint_path = os.path.join(
-        constants.DATA_PATH, "cleaned_draft_picks_with_av_checkpoint.csv"
-    )
+    draft_path = str(constants.DATA_PATH / "cleaned_draft_picks.csv")
+    out_path = str(constants.DATA_PATH / "cleaned_draft_picks_with_av.csv")
+    checkpoint_path = str(constants.DATA_PATH / "cleaned_draft_picks_with_av_checkpoint.csv")
     all_years = list(range(constants.START_YEAR, constants.END_YEAR + 1))
     av_cols = [str(y) for y in all_years]
 
@@ -156,20 +210,27 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
             log.warning("⚠️  Missing pfr_player_id for %s; leaving incomplete", name)
             continue
 
+        draft_team = str(row_data.get("team", ""))
         row = _get_at_index(df, idx)
         try:
-            av_by_year, career_av, w_av = _calculate_av(str(pid), all_years)
+            av_by_year, career_av, w_av, dt_career, dt_w = _calculate_av(
+                str(pid), all_years, draft_team
+            )
             for col in av_cols:
                 df.at[row, col] = av_by_year[col]
             df.at[row, "career"] = career_av
             df.at[row, "weighted_career"] = w_av
+            df.at[row, "draft_team_career"] = dt_career
+            df.at[row, "draft_team_weighted_career"] = dt_w
             df.at[row, "av_complete"] = True
             log.info(
-                "✔️  AV via sportsipy: %s (%s) career=%s weighted=%s",
+                "✔️  AV via sportsipy: %s (%s) career=%s weighted=%s dt_career=%s dt_weighted=%s",
                 name,
                 pid,
                 career_av,
                 w_av,
+                dt_career,
+                dt_w,
             )
         except (ValueError, KeyError, AttributeError) as e:
             log.warning("⚠️  sportsipy error for %s (%s): %s", name, pid, e)
