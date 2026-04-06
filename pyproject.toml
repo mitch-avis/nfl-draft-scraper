@@ -12,13 +12,11 @@ keywords = ["stats", "sports", "football", "nfl", "draft", "scraper"]
 authors = [{ name = "Mitch Avis", email = "mitchavis@gmail.com" }]
 license = { text = "MIT" }
 dependencies = [
-    "beautifulsoup4",
-    "lxml",
     "numpy",
     "pandas",
+    "playwright",
     "polars",
     "Requests",
-    "selenium",
     "sportsipy",
 ]
 classifiers = [
@@ -30,7 +28,6 @@ classifiers = [
 [project.optional-dependencies]
 bot-evasion = [
     "curl_cffi",
-    "playwright",
     "camoufox",
     "cryptography",
     "secretstorage",

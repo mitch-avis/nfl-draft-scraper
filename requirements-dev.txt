@@ -44,7 +44,7 @@ pytest-sugar==1.1.1
     # via -r requirements-dev.in
 pytest-xdist==3.8.0
     # via -r requirements-dev.in
-ruff==0.15.8
+ruff==0.15.9
     # via -r requirements-dev.in
 termcolor==3.3.0
     # via pytest-sugar

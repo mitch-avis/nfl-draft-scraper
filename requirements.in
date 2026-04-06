@@ -2,11 +2,9 @@
 sportsipy[bot-evasion] @ file://wheels/sportsipy-0.8.4-py3-none-any.whl
 
 # PyPi packages
-beautifulsoup4
 coloredlogs
-lxml
 numpy
 pandas
+playwright
 polars
 Requests
-selenium
