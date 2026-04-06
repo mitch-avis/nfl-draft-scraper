@@ -61,3 +61,4 @@ pyright.log
 # AI Files
 .agents/
 .github/
+AGENTS.md
