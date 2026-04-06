@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from nfl_draft_scraper import constants
+from nfl_draft_scraper.constants import TEAM_ABBREVIATION_MAP, normalize_team
 
 
 class TestConstants:
@@ -14,7 +15,7 @@ class TestConstants:
 
     def test_data_path_under_root(self):
         """Verify data path under root."""
-        assert constants.DATA_PATH.startswith(str(constants.ROOT_DIR))
+        assert str(constants.DATA_PATH).startswith(str(constants.ROOT_DIR))
 
     def test_year_range_valid(self):
         """Verify year range valid."""
@@ -24,6 +25,56 @@ class TestConstants:
 
     def test_urls_are_https(self):
         """Verify urls are https."""
-        assert constants.PFF_BASE_URL.startswith("https://")
         assert constants.MOCK_DRAFT_DB_BASE_URL.startswith("https://")
         assert constants.JLBB_BASE_URL.startswith("https://")
+
+
+class TestTeamAbbreviationMap:
+    """Tests for TEAM_ABBREVIATION_MAP."""
+
+    def test_oak_maps_to_lvr(self):
+        """Verify Oakland Raiders abbreviation maps to Las Vegas Raiders."""
+        assert TEAM_ABBREVIATION_MAP["OAK"] == "LVR"
+
+    def test_sdg_maps_to_lac(self):
+        """Verify San Diego Chargers abbreviation maps to LA Chargers."""
+        assert TEAM_ABBREVIATION_MAP["SDG"] == "LAC"
+
+    def test_stl_maps_to_lar(self):
+        """Verify St. Louis Rams abbreviation maps to LA Rams."""
+        assert TEAM_ABBREVIATION_MAP["STL"] == "LAR"
+
+    def test_current_abbreviation_not_in_map(self):
+        """Verify current team abbreviations are not keys in the map."""
+        assert "LVR" not in TEAM_ABBREVIATION_MAP
+        assert "LAC" not in TEAM_ABBREVIATION_MAP
+        assert "LAR" not in TEAM_ABBREVIATION_MAP
+        assert "DAL" not in TEAM_ABBREVIATION_MAP
+
+
+class TestNormalizeTeam:
+    """Tests for normalize_team."""
+
+    def test_historical_oak_becomes_lvr(self):
+        """Verify OAK is normalized to LVR."""
+        assert normalize_team("OAK") == "LVR"
+
+    def test_historical_sdg_becomes_lac(self):
+        """Verify SDG is normalized to LAC."""
+        assert normalize_team("SDG") == "LAC"
+
+    def test_historical_stl_becomes_lar(self):
+        """Verify STL is normalized to LAR."""
+        assert normalize_team("STL") == "LAR"
+
+    def test_current_abbreviation_unchanged(self):
+        """Verify current abbreviations pass through unchanged."""
+        assert normalize_team("DAL") == "DAL"
+        assert normalize_team("LVR") == "LVR"
+        assert normalize_team("LAC") == "LAC"
+        assert normalize_team("LAR") == "LAR"
+
+    def test_strips_whitespace(self):
+        """Verify leading/trailing whitespace is stripped."""
+        assert normalize_team("  OAK  ") == "LVR"
+        assert normalize_team(" DAL ") == "DAL"
