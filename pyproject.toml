@@ -82,15 +82,20 @@ docstring-code-format = true
 
 [tool.pyright]
 pythonVersion = "3.12"
+# Production code under nfl_draft_scraper/ runs in strict mode (matches Pylance "Strict"
+# in VS Code). Tests stay on the standard-mode baseline below — they make heavy use of
+# fixtures, Mock objects, and monkeypatching where Unknown types are normal.
 typeCheckingMode = "standard"
+strict = ["nfl_draft_scraper"]
 venvPath = "."
 venv = ".venv"
 pythonPlatform = "Linux"
+# Local stubs for upstream packages without py.typed markers (e.g. sportsipy).
+stubPath = "stubs"
 executionEnvironments = [{ root = "." }]
-# Surface the same diagnostics Pylance shows in VS Code so the CLI stays in sync.
+# --- Standard-mode diagnostics promoted to errors (also surfaced by Pylance) ----------
 reportMissingImports = "error"
 reportMissingModuleSource = "warning"
-reportMissingTypeStubs = false
 reportAttributeAccessIssue = "error"
 reportAssignmentType = "error"
 reportArgumentType = "error"

@@ -9,17 +9,25 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
+# Tell sportsipy to use Chrome's cookie jar; must run before sportsipy is imported.
 os.environ["SPORTSIPY_CHROME_COOKIES"] = "1"
 
-import polars as pl
-from sportsipy.nfl.constants import PLAYER_SCHEME
-from sportsipy.nfl.roster import Player
+import polars as pl  # noqa: E402  -- imports must follow the os.environ above
+from sportsipy.nfl.constants import (  # noqa: E402  -- must follow os.environ setup
+    PLAYER_SCHEME as _PLAYER_SCHEME_RAW,
+)
+from sportsipy.nfl.roster import Player as _PlayerRaw  # noqa: E402  -- as above
 
-from nfl_draft_scraper import constants
-from nfl_draft_scraper.utils.csv_utils import read_df_from_csv
-from nfl_draft_scraper.utils.logger import log
+from nfl_draft_scraper import constants  # noqa: E402  -- as above
+from nfl_draft_scraper.utils.csv_utils import read_df_from_csv  # noqa: E402  -- as above
+from nfl_draft_scraper.utils.logger import log  # noqa: E402  -- as above
+
+# sportsipy has no type stubs; declare the public surface we use with explicit annotations
+# so strict type checking does not propagate ``Unknown`` through this module.
+PLAYER_SCHEME: dict[str, str] = _PLAYER_SCHEME_RAW
+Player: type[Any] = _PlayerRaw
 
 # Suppress noisy GNOME Keyring tracebacks from Chrome cookie extraction
 logging.getLogger("sportsipy.chrome_cookies").setLevel(logging.WARNING)
@@ -116,9 +124,10 @@ def _calculate_av(
     draft_team_weighted_career_av).
     """
     player = Player(player_id)
-    if player.dataframe is None:
+    raw_df = cast("pl.DataFrame | None", player.dataframe)
+    if raw_df is None:
         raise ValueError(f"No dataframe for player {player_id}")
-    stats_df = _clean_stats_df(player.dataframe)
+    stats_df = _clean_stats_df(raw_df)
     years_df = stats_df.filter(pl.col("season") != "Career").sort("season")
     av_by_year = _get_av_by_year(years_df, all_years)
     career_av = _calculate_career_av(av_by_year)
@@ -180,12 +189,12 @@ def _is_missing_player_id(pid: Any) -> bool:
     return text == "" or text.lower() == "nan"
 
 
-def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
+def update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
     """Update AV using sportsipy and checkpoint regularly.
 
     Args:
-        force: If True, re-scrape every player regardless of av_complete status. checkpoint_every:
-        Save a checkpoint CSV after this many players are processed.
+        force: If True, re-scrape every player regardless of av_complete status.
+        checkpoint_every: Save a checkpoint CSV after this many players are processed.
 
     """
     draft_path = str(constants.DATA_PATH / "cleaned_draft_picks.csv")
@@ -271,4 +280,4 @@ def _build_parser() -> argparse.ArgumentParser:
 
 if __name__ == "__main__":
     args = _build_parser().parse_args()
-    _update_av(force=args.force, checkpoint_every=args.checkpoint_every)
+    update_av(force=args.force, checkpoint_every=args.checkpoint_every)

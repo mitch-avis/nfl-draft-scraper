@@ -11,6 +11,7 @@ import json
 import random
 import re
 import time
+from typing import Any
 
 import requests
 
@@ -73,17 +74,18 @@ def parse_big_board(page: str) -> list[dict[str, str]]:
         log.warning("No React props found in the page")
         return []
 
-    props = json.loads(html.unescape(match.group(1)))
-    selections = props.get("mock", {}).get("selections", [])
+    props: dict[str, Any] = json.loads(html.unescape(match.group(1)))
+    mock_obj: dict[str, Any] = props.get("mock", {}) or {}
+    selections: list[dict[str, Any]] = mock_obj.get("selections", []) or []
 
     out: list[dict[str, str]] = []
     for sel in selections:
         rank = str(sel.get("pick", ""))
-        player = sel.get("player", {})
-        name = player.get("name", "").strip()
-        pos = player.get("position", "").strip()
-        college_obj = player.get("college") or {}
-        school = college_obj.get("name", "").strip()
+        player: dict[str, Any] = sel.get("player", {}) or {}
+        name = str(player.get("name", "")).strip()
+        pos = str(player.get("position", "")).strip()
+        college_obj: dict[str, Any] = player.get("college") or {}
+        school = str(college_obj.get("name", "")).strip()
 
         if not rank or not name:
             continue

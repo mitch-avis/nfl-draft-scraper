@@ -16,7 +16,7 @@ import json
 import random
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 from playwright.sync_api import Page, sync_playwright
 
@@ -90,7 +90,7 @@ def _extract_widget_data(shiny_html: str) -> dict[str, list[Any]]:
     widget: dict[str, Any] = json.loads(match.group(1))
     data: dict[str, list[Any]] = widget["x"]["tag"]["attribs"]["data"]
     col_names = list(data.keys())
-    row_count = len(next(iter(data.values()), []))
+    row_count = len(next(iter(data.values()), cast("list[Any]", [])))
     log.debug("Extracted widget data: %d columns, %d rows", len(col_names), row_count)
     log.debug("Widget columns: %s", col_names)
     return data

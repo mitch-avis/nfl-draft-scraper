@@ -1,15 +1,15 @@
-"""Tests for nfl_draft_scraper.scrape_av — _update_av."""
+"""Tests for nfl_draft_scraper.scrape_av — update_av."""
 
 from unittest.mock import patch
 
 import polars as pl
 
-from nfl_draft_scraper.scrape_av import _build_parser, _update_av
+from nfl_draft_scraper.scrape_av import _build_parser, update_av
 from nfl_draft_scraper.utils.csv_utils import write_df_to_csv
 
 
 class TestUpdateAv:
-    """Tests for _update_av."""
+    """Tests for update_av."""
 
     def _setup_draft_csv(self, tmp_path, seasons=None, teams=None):
         """Create a minimal cleaned_draft_picks.csv on disk."""
@@ -41,7 +41,7 @@ class TestUpdateAv:
         self._setup_draft_csv(tmp_path, [2024], teams=["TST"])
         mock_calc.return_value = ({"2024": 5}, 5, 5.0, 5, 5.0)
 
-        _update_av(checkpoint_every=100)
+        update_av(checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         assert "2024" in out.columns
@@ -61,7 +61,7 @@ class TestUpdateAv:
         self._setup_draft_csv(tmp_path, [2024], teams=["TST"])
         mock_calc.side_effect = ValueError("fail")
 
-        _update_av(checkpoint_every=100)
+        update_av(checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         row = out.row(0, named=True)
@@ -79,7 +79,7 @@ class TestUpdateAv:
         self._setup_draft_csv(tmp_path, [2020], teams=["DAL"])
         mock_calc.return_value = ({"2020": 7, "2021": 3}, 10, 9.9, 10, 9.9)
 
-        _update_av(checkpoint_every=100)
+        update_av(checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         row = out.row(0, named=True)
@@ -113,7 +113,7 @@ class TestUpdateAv:
 
         mock_calc.return_value = ({"2024": 9}, 9, 9.0, 9, 9.0)
 
-        _update_av(force=True, checkpoint_every=100)
+        update_av(force=True, checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         row = out.row(0, named=True)
@@ -138,7 +138,7 @@ class TestUpdateAv:
         )
         write_df_to_csv(df, tmp_path / "cleaned_draft_picks.csv", index=True)
 
-        _update_av(checkpoint_every=100)
+        update_av(checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         row = out.row(0, named=True)
@@ -164,7 +164,7 @@ class TestUpdateAv:
         write_df_to_csv(df, tmp_path / "cleaned_draft_picks.csv", index=True)
         mock_calc.return_value = ({"2024": 1}, 1, 1.0, 1, 1.0)
 
-        _update_av(checkpoint_every=2)
+        update_av(checkpoint_every=2)
 
         checkpoint = tmp_path / "cleaned_draft_picks_with_av_checkpoint.csv"
         assert checkpoint.exists()
@@ -179,7 +179,7 @@ class TestUpdateAv:
         self._setup_draft_csv(tmp_path, [2020], teams=["DAL"])
         mock_calc.return_value = ({"2020": 7, "2021": 8}, 15, 14.6, 7, 7.0)
 
-        _update_av(checkpoint_every=100)
+        update_av(checkpoint_every=100)
 
         out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         row = out.row(0, named=True)

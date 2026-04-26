@@ -167,7 +167,7 @@ def _strip_punctuation(text: str) -> str:
     return text.replace(".", "").replace("'", "").replace("-", "")
 
 
-def _first_names_compatible(name_a: str, name_b: str) -> bool:
+def first_names_compatible(name_a: str, name_b: str) -> bool:
     """Check whether two player names have compatible first names.
 
     Strips punctuation (periods, apostrophes) then checks if one first name is a substring of the
@@ -195,7 +195,7 @@ def _extract_last_name(name: str) -> str:
     return parts[-1] if parts else ""
 
 
-def _last_names_compatible(name_a: str, name_b: str) -> bool:
+def last_names_compatible(name_a: str, name_b: str) -> bool:
     """Check whether two player names share a compatible last name.
 
     Handles hyphenated last names by checking whether any component of one last name appears in the
@@ -239,7 +239,7 @@ def _fuzzy_match_player(
     if not matches:
         return None
     candidate = matches[0]
-    if not _last_names_compatible(name, candidate):
+    if not last_names_compatible(name, candidate):
         return None
     # Position + school cross-check (reject only when *both* disagree)
     if bb_positions is not None and bb_schools is not None:

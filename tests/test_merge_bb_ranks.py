@@ -5,14 +5,14 @@ import polars as pl
 from nfl_draft_scraper.merge_bb_ranks_to_picks import (
     _PLAYER_NAME_ALIASES,
     _extract_first_name,
-    _first_names_compatible,
     _fuzzy_match_player,
     _get_av_columns,
     _get_rank_lists,
-    _last_names_compatible,
     _normalize_school,
     _positions_compatible,
     _schools_compatible,
+    first_names_compatible,
+    last_names_compatible,
 )
 
 
@@ -53,148 +53,148 @@ class TestExtractFirstName:
 
 
 class TestFirstNamesCompatible:
-    """Tests for _first_names_compatible."""
+    """Tests for first_names_compatible."""
 
     def test_identical_first_names(self):
         """Verify identical first names are compatible."""
-        assert _first_names_compatible("Patrick Mahomes", "Patrick Mahomes") is True
+        assert first_names_compatible("Patrick Mahomes", "Patrick Mahomes") is True
 
     def test_abbreviation_pat_patrick(self):
         """Verify Pat is compatible with Patrick (substring)."""
-        assert _first_names_compatible("Pat Mahomes", "Patrick Mahomes") is True
+        assert first_names_compatible("Pat Mahomes", "Patrick Mahomes") is True
 
     def test_abbreviation_cam_cameron(self):
         """Verify Cam is compatible with Cameron (substring)."""
-        assert _first_names_compatible("Cam Ward", "Cameron Ward") is True
+        assert first_names_compatible("Cam Ward", "Cameron Ward") is True
 
     def test_abbreviation_ben_benjamin(self):
         """Verify Ben is compatible with Benjamin (substring)."""
-        assert _first_names_compatible("Ben Yurosek", "Benjamin Yurosek") is True
+        assert first_names_compatible("Ben Yurosek", "Benjamin Yurosek") is True
 
     def test_nickname_bisi_olabisi(self):
         """Verify Bisi is compatible with Olabisi (substring)."""
-        assert _first_names_compatible("Bisi Johnson", "Olabisi Johnson") is True
+        assert first_names_compatible("Bisi Johnson", "Olabisi Johnson") is True
 
     def test_nickname_cobie_decobie(self):
         """Verify Cobie is compatible with Decobie (substring)."""
-        assert _first_names_compatible("Cobie Durant", "Decobie Durant") is True
+        assert first_names_compatible("Cobie Durant", "Decobie Durant") is True
 
     def test_dj_variants(self):
         """Verify DJ and D.J. are compatible (punctuation stripped)."""
-        assert _first_names_compatible("DJ Chark", "D.J. Chark") is True
+        assert first_names_compatible("DJ Chark", "D.J. Chark") is True
 
     def test_completely_different_first_names(self):
         """Verify Faion and Ja'Von are NOT compatible."""
-        assert _first_names_compatible("Faion Hicks", "Ja'Von Hicks") is False
+        assert first_names_compatible("Faion Hicks", "Ja'Von Hicks") is False
 
     def test_completely_different_lamar_amari(self):
         """Verify Lamar and Amari are NOT compatible."""
-        assert _first_names_compatible("Lamar Jackson", "Amari Jackson") is False
+        assert first_names_compatible("Lamar Jackson", "Amari Jackson") is False
 
     def test_completely_different_dee_nate(self):
         """Verify Dee and Nate are NOT compatible."""
-        assert _first_names_compatible("Dee Wiggins", "Nate Wiggins") is False
+        assert first_names_compatible("Dee Wiggins", "Nate Wiggins") is False
 
     def test_trevon_same_first_name_different_last(self):
         """Verify Trevon matches Trevon even with different full name patterns."""
-        assert _first_names_compatible("Trevon Moehrig-Woodard", "Trevon Moehrig") is True
+        assert first_names_compatible("Trevon Moehrig-Woodard", "Trevon Moehrig") is True
 
     def test_empty_name_a(self):
         """Verify empty name is not compatible."""
-        assert _first_names_compatible("", "Patrick Mahomes") is False
+        assert first_names_compatible("", "Patrick Mahomes") is False
 
     def test_empty_name_b(self):
         """Verify empty name is not compatible."""
-        assert _first_names_compatible("Patrick Mahomes", "") is False
+        assert first_names_compatible("Patrick Mahomes", "") is False
 
     def test_tre_trequan(self):
         """Verify Tre is compatible with Tre'Quan (substring after punctuation strip)."""
-        assert _first_names_compatible("Tre Smith", "Tre'Quan Smith") is True
+        assert first_names_compatible("Tre Smith", "Tre'Quan Smith") is True
 
     def test_ugo_ugochukwu(self):
         """Verify Ugo is compatible with Ugochukwu (substring)."""
-        assert _first_names_compatible("Ugo Amadi", "Ugochukwu Amadi") is True
+        assert first_names_compatible("Ugo Amadi", "Ugochukwu Amadi") is True
 
     def test_rj_variants(self):
         """Verify R.J. and RJ are compatible (punctuation stripped)."""
-        assert _first_names_compatible("R.J. Harvey Jr.", "RJ Harvey") is True
+        assert first_names_compatible("R.J. Harvey Jr.", "RJ Harvey") is True
 
     def test_bj_variants(self):
         """Verify B.J. and BJ are compatible (punctuation stripped)."""
-        assert _first_names_compatible("B.J. Green", "BJ Green II") is True
+        assert first_names_compatible("B.J. Green", "BJ Green II") is True
 
     def test_sean_sean(self):
         """Verify same first name Sean in hyphenated name is compatible."""
-        assert _first_names_compatible("Sean Murphy-Bunting", "Sean Bunting") is True
+        assert first_names_compatible("Sean Murphy-Bunting", "Sean Bunting") is True
 
     def test_josh_completely_different_jalen(self):
         """Verify Josh and Jalen are NOT compatible."""
-        assert _first_names_compatible("Josh Allen", "Jalen Allen") is False
+        assert first_names_compatible("Josh Allen", "Jalen Allen") is False
 
 
 class TestLastNamesCompatible:
-    """Tests for _last_names_compatible."""
+    """Tests for last_names_compatible."""
 
     def test_exact_match(self):
         """Verify identical last names are compatible."""
-        assert _last_names_compatible("john smith", "jane smith") is True
+        assert last_names_compatible("john smith", "jane smith") is True
 
     def test_case_insensitive(self):
         """Verify comparison is case-insensitive."""
-        assert _last_names_compatible("John Smith", "jane smith") is True
+        assert last_names_compatible("John Smith", "jane smith") is True
 
     def test_different_last_names(self):
         """Verify different last names are not compatible."""
-        assert _last_names_compatible("kobee minor", "kobe king") is False
+        assert last_names_compatible("kobee minor", "kobe king") is False
 
     def test_suffix_jr_stripped(self):
         """Verify Jr. suffix is stripped before comparison."""
-        assert _last_names_compatible("andrew booth", "andrew booth jr.") is True
+        assert last_names_compatible("andrew booth", "andrew booth jr.") is True
 
     def test_suffix_iii_stripped(self):
         """Verify III suffix is stripped before comparison."""
-        assert _last_names_compatible("john metchie", "john metchie iii") is True
+        assert last_names_compatible("john metchie", "john metchie iii") is True
 
     def test_suffix_ii_stripped(self):
         """Verify II suffix is stripped before comparison."""
-        assert _last_names_compatible("brian asamoah", "brian asamoah ii") is True
+        assert last_names_compatible("brian asamoah", "brian asamoah ii") is True
 
     def test_hyphenated_last_name_shares_component(self):
         """Verify hyphenated name matches if a component matches."""
-        assert _last_names_compatible("tre'vius tomlinson", "tre'vius hodges-tomlinson") is True
+        assert last_names_compatible("tre'vius tomlinson", "tre'vius hodges-tomlinson") is True
 
     def test_hyphenated_no_shared_component(self):
         """Verify hyphenated name without shared component is not compatible."""
-        assert _last_names_compatible("julian ashby", "juan davis") is False
+        assert last_names_compatible("julian ashby", "juan davis") is False
 
     def test_real_bad_match_quan_martin(self):
         """Verify Quan Martin does not match Sean Maginn."""
-        assert _last_names_compatible("quan martin", "sean maginn") is False
+        assert last_names_compatible("quan martin", "sean maginn") is False
 
     def test_real_bad_match_caleb_lohner(self):
         """Verify Caleb Lohner does not match Caleb Rogers."""
-        assert _last_names_compatible("caleb lohner", "caleb rogers") is False
+        assert last_names_compatible("caleb lohner", "caleb rogers") is False
 
     def test_real_bad_match_junior_bergen(self):
         """Verify Junior Bergen does not match Junior Tafuna."""
-        assert _last_names_compatible("junior bergen", "junior tafuna") is False
+        assert last_names_compatible("junior bergen", "junior tafuna") is False
 
     def test_empty_name(self):
         """Verify empty names are not compatible."""
-        assert _last_names_compatible("", "alice smith") is False
+        assert last_names_compatible("", "alice smith") is False
 
     def test_single_word_names(self):
         """Verify single-word names are compared directly."""
-        assert _last_names_compatible("alice", "alice") is True
-        assert _last_names_compatible("alice", "bob") is False
+        assert last_names_compatible("alice", "alice") is True
+        assert last_names_compatible("alice", "bob") is False
 
     def test_nickname_same_last_name(self):
         """Verify nickname with same last name is compatible (Cam → Cameron)."""
-        assert _last_names_compatible("cam jurgens", "cameron jurgens") is True
+        assert last_names_compatible("cam jurgens", "cameron jurgens") is True
 
     def test_substring_last_name(self):
         """Verify substring-based last name matching (to'oto'o ↔ to'o-to'o)."""
-        assert _last_names_compatible("henry to'oto'o", "henry to'o-to'o") is True
+        assert last_names_compatible("henry to'oto'o", "henry to'o-to'o") is True
 
 
 class TestPositionsCompatible:

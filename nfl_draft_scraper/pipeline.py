@@ -103,10 +103,10 @@ def _run_clean_picks() -> None:
 
 def _run_scrape_av(force_av: bool = False) -> None:
     """Run the AV scraper."""
-    from nfl_draft_scraper.scrape_av import _update_av
+    from nfl_draft_scraper.scrape_av import update_av
 
     log.info("=== Stage: scrape-av ===")
-    _update_av(force=force_av)
+    update_av(force=force_av)
 
 
 def _run_merge() -> None:
@@ -137,8 +137,8 @@ def run_pipeline(stages: list[str] | None = None, *, force: bool = False) -> Non
     """Run the specified pipeline stages, or all stages if none specified.
 
     Args:
-        stages: List of stage names to run.  ``None`` means all stages. force: If True, run every
-        requested stage regardless of existing data.
+        stages: List of stage names to run.  ``None`` means all stages.
+        force: If True, run every requested stage regardless of existing data.
 
     """
     target_stages = stages if stages else list(STAGES)

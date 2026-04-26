@@ -39,10 +39,11 @@ def read_write_data(
     provided function and writes the new data to a CSV file.
 
     Args:
-        data_name (str): The base name of the data file (without extension). func (Callable): The
-        function to generate data if needed. *args: Positional arguments to pass to the data
-        generation function. force_refresh (bool, optional): If True, forces data regeneration.
-        Defaults to False. **kwargs: Keyword arguments to pass to the data generation function.
+        data_name (str): The base name of the data file (without extension).
+        func (Callable): The function to generate data if needed.
+        *args: Positional arguments to pass to the data generation function.
+        force_refresh (bool, optional): If True, forces data regeneration. Defaults to False.
+        **kwargs: Keyword arguments to pass to the data generation function.
 
     Returns:
         pl.DataFrame: The data as a polars DataFrame.
@@ -73,9 +74,9 @@ def read_df_from_csv(file_path: str | Path, check_exists: bool = True) -> pl.Dat
     data columns.
 
     Args:
-        file_path (str | Path): The path to the CSV file. check_exists (bool, optional):  Whether to
-        check if the file exists before reading. Defaults
-                                        to True.
+        file_path (str | Path): The path to the CSV file.
+        check_exists (bool, optional): Whether to check if the file exists before reading.
+            Defaults to True.
 
     Returns:
         pl.DataFrame: The data read from the CSV file.
@@ -99,9 +100,9 @@ def write_df_to_csv(dataframe: pl.DataFrame, file_path: str | Path, index: bool 
     matching the legacy pandas ``to_csv(index=True)`` layout used by other tools in this repo.
 
     Args:
-        dataframe (pl.DataFrame): The DataFrame to write. file_path (str | Path): The path to the
-        CSV file where the data should be written. index (bool, optional): Whether to include the
-        row index in the CSV file. Defaults to True.
+        dataframe (pl.DataFrame): The DataFrame to write.
+        file_path (str | Path): The path to the CSV file where the data should be written.
+        index (bool, optional): Whether to include the row index in the CSV file. Defaults to True.
 
     """
     parent = os.path.dirname(file_path)

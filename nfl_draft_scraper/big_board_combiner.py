@@ -22,8 +22,8 @@ import polars as pl
 
 from nfl_draft_scraper import constants
 from nfl_draft_scraper.merge_bb_ranks_to_picks import (
-    _first_names_compatible,
-    _last_names_compatible,
+    first_names_compatible,
+    last_names_compatible,
 )
 from nfl_draft_scraper.utils.logger import log
 
@@ -66,9 +66,9 @@ def _best_match(name: str, choices: list[str], cutoff: float = 0.75) -> str | No
     if not matches:
         return None
     candidate = matches[0]
-    if not _last_names_compatible(name, candidate):
+    if not last_names_compatible(name, candidate):
         return None
-    if not _first_names_compatible(name, candidate):
+    if not first_names_compatible(name, candidate):
         return None
     return candidate
 
