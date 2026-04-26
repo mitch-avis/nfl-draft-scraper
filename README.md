@@ -54,7 +54,7 @@ nfl-draft-scraper/
 │       ├── __init__.py
 │       ├── csv_utils.py          # CSV read/write helpers
 │       └── logger.py             # Colored logging configuration
-├── tests/                        # Unit and integration tests (~109 tests)
+├── tests/                        # Unit and integration tests (~340 tests)
 ├── data/                         # Generated CSV output
 ├── wheels/                       # Local sportsipy wheel
 ├── pyproject.toml                # Build config, tool settings
@@ -155,8 +155,9 @@ ruff format .
 # Lint code
 ruff check .
 
-# Type check
-pyright
+# Type check (both must pass)
+ty check .
+pyright .
 
 # Lint Markdown
 markdownlint .
@@ -189,8 +190,8 @@ already exists:
 6. merge           → data/draft_picks_with_big_board_ranks_{year}.csv
 ```
 
-Each stage reads from the output of previous stages. Steps 1–2 can run in parallel. Steps 4–5 can
-run independently of steps 1–3.
+Each stage reads from the output of previous stages. The orchestrator runs them sequentially;
+steps 1–2 are independent of steps 4–5, so either group can be skipped or forced on its own.
 
 **Final output columns** (per-year CSVs): `round`, `round_pick`, `overall_pick`, `team`,
 `pfr_player_id`, `player`, `position`, `category`, `college`, `MDDB Rank`, `JLBB Rank`, `AvgRank`,
