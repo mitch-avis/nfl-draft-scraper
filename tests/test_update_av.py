@@ -209,3 +209,37 @@ class TestBuildParser:
         parser = _build_parser()
         args = parser.parse_args(["--checkpoint-every", "50"])
         assert args.checkpoint_every == 50
+
+
+class TestUpdateAvSkipComplete:
+    """Cover the av_complete-skip branch in update_av (force=False)."""
+
+    @patch("nfl_draft_scraper.scrape_av._calculate_av")
+    def test_skips_rows_already_marked_complete(self, mock_calc, tmp_path, monkeypatch):
+        """Verify av_complete rows are skipped when force is False."""
+        monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.DATA_PATH", tmp_path)
+        monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.START_YEAR", 2024)
+        monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.END_YEAR", 2024)
+
+        df = pl.DataFrame(
+            {
+                "pfr_player_id": ["Pid0001"],
+                "pfr_player_name": ["Player 0"],
+                "category": ["QB"],
+                "season": [2024],
+                "team": ["TST"],
+                "2024": [5],
+                "career": [5],
+                "weighted_career": [5.0],
+                "draft_team_career": [5],
+                "draft_team_weighted_career": [5.0],
+                "av_complete": [True],
+            }
+        )
+        df.write_csv(tmp_path / "cleaned_draft_picks_with_av_checkpoint.csv")
+
+        update_av(checkpoint_every=100)
+
+        mock_calc.assert_not_called()
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        assert out.row(0, named=True)["2024"] == 5

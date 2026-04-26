@@ -105,3 +105,51 @@ class TestVerifyYear:
         page_html = f'<div data-react-props="{escaped}"></div>'
         with pytest.raises(ValueError, match="Year mismatch.*expected 2020.*got "):
             _verify_year(page_html, 2020)
+
+
+class TestScrapeYear:
+    """Tests for scrape_year."""
+
+    def test_calls_helpers_and_saves(self, monkeypatch):
+        """Verify scrape_year fetches HTML, verifies the year, parses, and saves the records."""
+        from unittest.mock import MagicMock
+
+        from nfl_draft_scraper import mddb_bb_scraper
+
+        fake_html = _build_page(
+            [{"pick": 1, "player": {"name": "X", "position": "QB", "college": {"name": "S"}}}],
+            year="2024",
+        )
+        mock_fetch = MagicMock(return_value=fake_html)
+        mock_save = MagicMock()
+        monkeypatch.setattr(mddb_bb_scraper, "fetch_html", mock_fetch)
+        monkeypatch.setattr(mddb_bb_scraper, "save_csv", mock_save)
+
+        result = mddb_bb_scraper.scrape_year(2024)
+
+        mock_fetch.assert_called_once_with(2024)
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[0] == "mddb_big_board_2024.csv"
+        assert result[0]["name"] == "X"
+
+
+class TestMain:
+    """Tests for main."""
+
+    def test_iterates_over_year_range_and_sleeps(self, monkeypatch):
+        """Verify main calls scrape_year for each year and sleeps between calls."""
+        from unittest.mock import MagicMock
+
+        from nfl_draft_scraper import constants, mddb_bb_scraper
+
+        monkeypatch.setattr(constants, "START_YEAR", 2024)
+        monkeypatch.setattr(constants, "END_YEAR", 2025)
+        mock_scrape = MagicMock()
+        mock_sleep = MagicMock()
+        monkeypatch.setattr(mddb_bb_scraper, "scrape_year", mock_scrape)
+        monkeypatch.setattr(mddb_bb_scraper.time, "sleep", mock_sleep)
+
+        mddb_bb_scraper.main()
+
+        assert mock_scrape.call_args_list == [((2024,),), ((2025,),)]
+        assert mock_sleep.call_count == 2

@@ -126,3 +126,91 @@ class TestStagesConstant:
             "scrape-av",
             "merge",
         )
+
+
+class TestRunners:
+    """Tests for the per-stage `_run_*` runner helpers."""
+
+    def test_run_scrape_mddb_invokes_main(self):
+        """Verify _run_scrape_mddb calls mddb_bb_scraper.main."""
+        from nfl_draft_scraper.pipeline import _run_scrape_mddb
+
+        with patch("nfl_draft_scraper.mddb_bb_scraper.main") as mock_main:
+            _run_scrape_mddb()
+            mock_main.assert_called_once()
+
+    def test_run_scrape_jlbb_invokes_main(self):
+        """Verify _run_scrape_jlbb calls jl_bb_scraper.main."""
+        from nfl_draft_scraper.pipeline import _run_scrape_jlbb
+
+        with patch("nfl_draft_scraper.jl_bb_scraper.main") as mock_main:
+            _run_scrape_jlbb()
+            mock_main.assert_called_once()
+
+    def test_run_combine_invokes_main(self):
+        """Verify _run_combine calls big_board_combiner.main."""
+        from nfl_draft_scraper.pipeline import _run_combine
+
+        with patch("nfl_draft_scraper.big_board_combiner.main") as mock_main:
+            _run_combine()
+            mock_main.assert_called_once()
+
+    def test_run_clean_picks_invokes_main(self):
+        """Verify _run_clean_picks calls draft_picks_cleaner.main."""
+        from nfl_draft_scraper.pipeline import _run_clean_picks
+
+        with patch("nfl_draft_scraper.draft_picks_cleaner.main") as mock_main:
+            _run_clean_picks()
+            mock_main.assert_called_once()
+
+    def test_run_scrape_av_passes_force_flag(self):
+        """Verify _run_scrape_av forwards the force flag to update_av."""
+        from nfl_draft_scraper.pipeline import _run_scrape_av
+
+        with patch("nfl_draft_scraper.scrape_av.update_av") as mock_update:
+            _run_scrape_av(force_av=True)
+            mock_update.assert_called_once_with(force=True)
+
+    def test_run_merge_invokes_main(self):
+        """Verify _run_merge calls merge_bb_ranks_to_picks.main."""
+        from nfl_draft_scraper.pipeline import _run_merge
+
+        with patch("nfl_draft_scraper.merge_bb_ranks_to_picks.main") as mock_main:
+            _run_merge()
+            mock_main.assert_called_once()
+
+
+class TestMain:
+    """Tests for the pipeline main entry point."""
+
+    def test_main_runs_with_no_args(self, monkeypatch):
+        """Verify main parses an empty argv and dispatches to run_pipeline."""
+        from nfl_draft_scraper import pipeline
+
+        monkeypatch.setattr("sys.argv", ["pipeline.py"])
+        with patch("nfl_draft_scraper.pipeline.run_pipeline") as mock_run:
+            pipeline.main()
+            mock_run.assert_called_once_with(stages=None, force=False)
+
+    def test_main_forwards_explicit_stages_and_force(self, monkeypatch):
+        """Verify main forwards stage names and the --force flag to run_pipeline."""
+        from nfl_draft_scraper import pipeline
+
+        monkeypatch.setattr("sys.argv", ["pipeline.py", "scrape-mddb", "--force"])
+        with patch("nfl_draft_scraper.pipeline.run_pipeline") as mock_run:
+            pipeline.main()
+            mock_run.assert_called_once_with(stages=["scrape-mddb"], force=True)
+
+    def test_main_handles_keyboard_interrupt(self, monkeypatch):
+        """Verify main exits with code 130 on Ctrl-C during run_pipeline."""
+        import pytest
+
+        from nfl_draft_scraper import pipeline
+
+        monkeypatch.setattr("sys.argv", ["pipeline.py"])
+        with (
+            patch("nfl_draft_scraper.pipeline.run_pipeline", side_effect=KeyboardInterrupt),
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            pipeline.main()
+        assert excinfo.value.code == 130

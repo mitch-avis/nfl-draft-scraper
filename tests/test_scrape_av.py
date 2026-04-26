@@ -260,3 +260,149 @@ class TestGetDraftTeamAvByYear:
         )
         result = _get_draft_team_av_by_year(years_df, "CLE", [2020, 2021, 2022])
         assert result == {"2020": 5, "2021": 6, "2022": 0}
+
+
+class TestSaveCheckpoint:
+    """Tests for _save_checkpoint."""
+
+    def test_writes_csv_and_logs_completion_count(self, tmp_path):
+        """Verify _save_checkpoint writes the rows to CSV."""
+        from nfl_draft_scraper.scrape_av import _save_checkpoint
+
+        rows = [
+            {"player": "A", "av_complete": True},
+            {"player": "B", "av_complete": False},
+        ]
+        path = tmp_path / "checkpoint.csv"
+        _save_checkpoint(rows, str(path))
+        assert path.exists()
+        df = pl.read_csv(path)
+        assert df.height == 2
+
+
+class TestInitializeDraftPicksDf:
+    """Tests for _initialize_draft_picks_df."""
+
+    def test_resumes_from_checkpoint_with_av_complete_column(self, tmp_path):
+        """Verify resume loads checkpoint and preserves the av_complete column."""
+        from nfl_draft_scraper.scrape_av import _initialize_draft_picks_df
+
+        checkpoint = tmp_path / "ck.csv"
+        pl.DataFrame({"pfr_player_id": ["x"], "team": ["DAL"], "av_complete": [True]}).write_csv(
+            checkpoint
+        )
+        rows = _initialize_draft_picks_df(
+            draft_path="unused.csv",
+            checkpoint_path=str(checkpoint),
+            av_columns=["2020"],
+        )
+        assert rows == [{"pfr_player_id": "x", "team": "DAL", "av_complete": True}]
+
+    def test_resumes_from_checkpoint_without_av_complete_column(self, tmp_path):
+        """Verify resume injects av_complete=False when the column is missing."""
+        from nfl_draft_scraper.scrape_av import _initialize_draft_picks_df
+
+        checkpoint = tmp_path / "ck.csv"
+        pl.DataFrame({"pfr_player_id": ["x", "y"], "team": ["DAL", "NYG"]}).write_csv(checkpoint)
+        rows = _initialize_draft_picks_df(
+            draft_path="unused.csv",
+            checkpoint_path=str(checkpoint),
+            av_columns=["2020"],
+        )
+        assert all(row["av_complete"] is False for row in rows)
+
+
+class TestCalculateAv:
+    """Tests for _calculate_av."""
+
+    def test_combines_helpers_and_returns_tuple(self, monkeypatch):
+        """Verify _calculate_av drives the helpers using a fake Player.dataframe."""
+        from nfl_draft_scraper import scrape_av
+
+        fake_df = pl.DataFrame(
+            {
+                "season": ["2020", "2021", "Career"],
+                "team_abbreviation": ["DAL", "DAL", ""],
+                "approximate_value": [5, 3, 8],
+            }
+        )
+
+        class _FakePlayer:
+            """Stub Player whose dataframe attribute returns ``fake_df``."""
+
+            def __init__(self, _player_id: str) -> None:
+                """Store the player id; body intentionally unused."""
+                self.dataframe = fake_df
+
+        monkeypatch.setattr(scrape_av, "Player", _FakePlayer)
+        av_by_year, career, weighted, dt_career, dt_weighted = scrape_av._calculate_av(
+            "x", [2020, 2021], "DAL"
+        )
+        assert av_by_year == {"2020": 5, "2021": 3}
+        assert career == 8
+        assert dt_career == 8
+        assert weighted == round(5 * 1.0 + 3 * 0.95, 1)
+        assert dt_weighted == round(5 * 1.0 + 3 * 0.95, 1)
+
+    def test_raises_when_dataframe_is_none(self, monkeypatch):
+        """Verify _calculate_av raises ValueError when Player.dataframe is None."""
+        import pytest
+
+        from nfl_draft_scraper import scrape_av
+
+        class _FakePlayer:
+            """Stub Player whose dataframe is None."""
+
+            def __init__(self, _player_id: str) -> None:
+                """Store id; body unused."""
+                self.dataframe = None
+
+        monkeypatch.setattr(scrape_av, "Player", _FakePlayer)
+        with pytest.raises(ValueError, match="No dataframe"):
+            scrape_av._calculate_av("missing", [2020], "DAL")
+
+
+class TestIsMissingPlayerId:
+    """Tests for _is_missing_player_id."""
+
+    def test_none_returns_true(self):
+        """Verify None player id is reported missing."""
+        from nfl_draft_scraper.scrape_av import _is_missing_player_id
+
+        assert _is_missing_player_id(None) is True
+
+    def test_empty_string_returns_true(self):
+        """Verify empty string player id is reported missing."""
+        from nfl_draft_scraper.scrape_av import _is_missing_player_id
+
+        assert _is_missing_player_id("   ") is True
+
+    def test_nan_string_returns_true(self):
+        """Verify the literal 'nan' string is reported missing."""
+        from nfl_draft_scraper.scrape_av import _is_missing_player_id
+
+        assert _is_missing_player_id("NaN") is True
+
+    def test_valid_id_returns_false(self):
+        """Verify a normal id is not reported missing."""
+        from nfl_draft_scraper.scrape_av import _is_missing_player_id
+
+        assert _is_missing_player_id("Pid0001") is False
+
+
+class TestGetDraftTeamAvByYearCareerSkip:
+    """Cover the early-continue when the season is non-numeric."""
+
+    def test_career_row_is_skipped(self):
+        """Verify rows whose season is the literal 'Career' are skipped."""
+        from nfl_draft_scraper.scrape_av import _get_draft_team_av_by_year
+
+        years_df = pl.DataFrame(
+            {
+                "season": ["2020", "Career"],
+                "team_abbreviation": ["DAL", "DAL"],
+                "approximate_value": [4, 99],
+            }
+        )
+        result = _get_draft_team_av_by_year(years_df, "DAL", [2020])
+        assert result == {"2020": 4}

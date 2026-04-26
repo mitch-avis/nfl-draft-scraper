@@ -1,9 +1,15 @@
 """Tests for nfl_draft_scraper.constants."""
 
+import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from nfl_draft_scraper import constants
-from nfl_draft_scraper.constants import TEAM_ABBREVIATION_MAP, normalize_team
+from nfl_draft_scraper.constants import (
+    TEAM_ABBREVIATION_MAP,
+    _most_recent_completed_season,
+    normalize_team,
+)
 
 
 class TestConstants:
@@ -78,3 +84,31 @@ class TestNormalizeTeam:
         """Verify leading/trailing whitespace is stripped."""
         assert normalize_team("  OAK  ") == "LVR"
         assert normalize_team(" DAL ") == "DAL"
+
+
+class TestMostRecentCompletedSeason:
+    """Tests for _most_recent_completed_season."""
+
+    def test_january_returns_prior_year(self):
+        """In January, the prior calendar year is the most recent completed season."""
+        with patch("nfl_draft_scraper.constants.datetime") as mock_dt:
+            mock_dt.date.today.return_value = datetime.date(2025, 1, 15)
+            assert _most_recent_completed_season() == 2024
+
+    def test_february_returns_prior_year(self):
+        """In February, the prior calendar year is still the most recent completed season."""
+        with patch("nfl_draft_scraper.constants.datetime") as mock_dt:
+            mock_dt.date.today.return_value = datetime.date(2025, 2, 28)
+            assert _most_recent_completed_season() == 2024
+
+    def test_march_returns_current_year(self):
+        """From March onward, the current calendar year is the most recent completed season."""
+        with patch("nfl_draft_scraper.constants.datetime") as mock_dt:
+            mock_dt.date.today.return_value = datetime.date(2025, 3, 1)
+            assert _most_recent_completed_season() == 2025
+
+    def test_october_returns_current_year(self):
+        """In October the current year is still the most recent completed season."""
+        with patch("nfl_draft_scraper.constants.datetime") as mock_dt:
+            mock_dt.date.today.return_value = datetime.date(2025, 10, 1)
+            assert _most_recent_completed_season() == 2025
