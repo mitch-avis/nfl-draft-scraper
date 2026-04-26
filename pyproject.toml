@@ -84,12 +84,28 @@ docstring-code-format = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-reportMissingImports = true
-reportMissingTypeStubs = false
 venvPath = "."
 venv = ".venv"
 pythonPlatform = "Linux"
 executionEnvironments = [{ root = "." }]
+# Surface the same diagnostics Pylance shows in VS Code so the CLI stays in sync.
+reportMissingImports = "error"
+reportMissingModuleSource = "warning"
+reportMissingTypeStubs = false
+reportAttributeAccessIssue = "error"
+reportAssignmentType = "error"
+reportArgumentType = "error"
+reportReturnType = "error"
+reportCallIssue = "error"
+reportIndexIssue = "error"
+reportOperatorIssue = "error"
+reportOptionalSubscript = "error"
+reportOptionalMemberAccess = "error"
+reportOptionalCall = "error"
+reportOptionalIterable = "error"
+reportOptionalContextManager = "error"
+reportOptionalOperand = "error"
+reportGeneralTypeIssues = "error"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
