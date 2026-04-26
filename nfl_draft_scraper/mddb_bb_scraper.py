@@ -1,17 +1,14 @@
 """Mock Draft Database Big Board Scraper.
 
-Fetches the consensus big board for each draft year by extracting the JSON data embedded in the
-page's React component props, avoiding brittle HTML/XPath parsing entirely.
+Fetches the consensus big board for each draft year by parsing the prospect-card markup rendered
+on the public big-board page.
 """
 
 from __future__ import annotations
 
-import html
-import json
 import random
 import re
 import time
-from typing import Any
 
 import requests
 
@@ -23,7 +20,23 @@ SLEEP_MIN = 1
 SLEEP_MAX = 3
 _rng = random.SystemRandom()
 
-_REACT_PROPS_RE = re.compile(r'data-react-props="([^"]+)"')
+# Each prospect card is a flat block of HTML containing a rank span, a player anchor, a position
+# pill, and (usually) a college anchor. The site uses Tailwind utility classes; the patterns below
+# anchor on the most-stable class fragments.
+_PLAYER_ANCHOR_RE = re.compile(
+    r'<a class="text-base sm:text-xl font-bold[^"]*"\s+href="/players/\d+/[^"]+">\s*'
+    r"([^<\n]+?)\s*</a>",
+    re.DOTALL,
+)
+_RANK_RE = re.compile(r"<span [^>]*font-black[^>]*>\s*(\d+)\s*</span>")
+_POSITION_RE = re.compile(
+    r'<span class="text-xs font-bold text-blue-700[^"]*">\s*([^<]+?)\s*</span>',
+)
+_COLLEGE_ANCHOR_RE = re.compile(
+    r'<a class="text-sm text-gray-500[^"]*"\s+href="/colleges/\d+/[^"]+">\s*'
+    r"([^<\n]+?)\s*</a>",
+    re.DOTALL,
+)
 
 _REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
@@ -42,50 +55,49 @@ def fetch_html(year: int) -> str:
 
 
 def _verify_year(page_html: str, expected_year: int) -> None:
-    """Verify the React props year matches the expected year.
+    """Verify the page belongs to the expected draft year.
 
     Raises
     ------
     ValueError
-        If no React props are found or the year does not match.
+        If the canonical big-board path for ``expected_year`` is not present in the page.
 
     """
-    match = _REACT_PROPS_RE.search(page_html)
-    if not match:
-        msg = "No React props found in the page"
-        raise ValueError(msg)
-    props = json.loads(html.unescape(match.group(1)))
-    props_year = str(props.get("year", ""))
-    log.debug("React props year: %s (expected %d)", props_year, expected_year)
-    if props_year != str(expected_year):
-        msg = f"Year mismatch: expected {expected_year}, got {props_year}"
+    marker = f"/big-boards/{expected_year}/consensus-big-board-{expected_year}"
+    if marker not in page_html:
+        msg = f"Year marker not found in page: expected {marker}"
         raise ValueError(msg)
 
 
 def parse_big_board(page: str) -> list[dict[str, str]]:
-    """Extract player data from the React props JSON embedded in the HTML.
+    """Extract player data from the rendered MDDB consensus big-board page.
 
-    The MDDB page ships all big-board data inside a ``data-react-props`` attribute on a ``<div>``
-    element. The JSON structure contains a ``mock.selections`` list where each entry has ``pick``,
-    ``player.name``, ``player.position``, and ``player.college.name``.
+    Each prospect is represented by a card with a numeric rank, a player anchor, a position pill,
+    and an optional college anchor. We locate every player anchor first and then slice the HTML
+    between successive anchors to find the rank, position, and school for that prospect.
     """
-    match = _REACT_PROPS_RE.search(page)
-    if not match:
-        log.warning("No React props found in the page")
+    player_matches = list(_PLAYER_ANCHOR_RE.finditer(page))
+    if not player_matches:
+        log.warning("No prospect cards found in the page")
         return []
 
-    props: dict[str, Any] = json.loads(html.unescape(match.group(1)))
-    mock_obj: dict[str, Any] = props.get("mock", {}) or {}
-    selections: list[dict[str, Any]] = mock_obj.get("selections", []) or []
-
     out: list[dict[str, str]] = []
-    for sel in selections:
-        rank = str(sel.get("pick", ""))
-        player: dict[str, Any] = sel.get("player", {}) or {}
-        name = str(player.get("name", "")).strip()
-        pos = str(player.get("position", "")).strip()
-        college_obj: dict[str, Any] = player.get("college") or {}
-        school = str(college_obj.get("name", "")).strip()
+    for i, match in enumerate(player_matches):
+        name = match.group(1).strip()
+
+        prev_end = player_matches[i - 1].end() if i > 0 else 0
+        before = page[prev_end : match.start()]
+        rank_hits = _RANK_RE.findall(before)
+        rank = rank_hits[-1] if rank_hits else ""
+
+        next_start = player_matches[i + 1].start() if i + 1 < len(player_matches) else len(page)
+        after = page[match.end() : next_start]
+
+        pos_match = _POSITION_RE.search(after)
+        pos = pos_match.group(1).strip() if pos_match else ""
+
+        school_match = _COLLEGE_ANCHOR_RE.search(after)
+        school = school_match.group(1).strip() if school_match else ""
 
         if not rank or not name:
             continue
