@@ -3,7 +3,10 @@
 Fetches Arif Hasan's consensus big boards from Wide Left
 (https://www.wideleft.football). Each year's data is published as a Google Sheet; the scraper uses
 the sheet's CSV export endpoint, parses the rows below the metadata header, and writes a normalized
-``wl_big_board_{year}.csv`` with the columns ``rank, name, pos, school``.
+``wl_big_board_{year}.csv`` with the columns ``rank, name, pos, school, variance``.
+
+The Wide Left ``Variance`` column is a rank-adjusted measure of analyst disagreement, centered on
+100 (average); each ±15 step is a notable shift (e.g. 115 = polarizing, 85 = well-agreed-on).
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ _HEADER_RANK = "ovr"
 _HEADER_PLAYER = "player"
 _HEADER_POSITION = "position"
 _HEADER_SCHOOL = "school"
+_HEADER_VARIANCE = "variance"
 
 
 class UnknownYearError(KeyError):
@@ -99,9 +103,15 @@ def parse_big_board(csv_text: str) -> list[dict[str, str]]:
         log.warning("Wide Left CSV header missing expected columns: %s", header)
         return []
 
+    # Variance is optional — older sheets may omit it.
+    variance_col = header.index(_HEADER_VARIANCE) if _HEADER_VARIANCE in header else None
+
     out: list[dict[str, str]] = []
     for row in rows[header_idx + 1 :]:
-        if len(row) <= max(rank_col, name_col, pos_col, school_col):
+        required_cols = [rank_col, name_col, pos_col, school_col]
+        if variance_col is not None:
+            required_cols.append(variance_col)
+        if len(row) <= max(required_cols):
             continue
         rank = row[rank_col].strip()
         if not rank.isdigit():
@@ -109,14 +119,14 @@ def parse_big_board(csv_text: str) -> list[dict[str, str]]:
         name = row[name_col].strip()
         if not name:
             continue
-        out.append(
-            {
-                "rank": rank,
-                "name": name,
-                "pos": row[pos_col].strip(),
-                "school": row[school_col].strip(),
-            }
-        )
+        record: dict[str, str] = {
+            "rank": rank,
+            "name": name,
+            "pos": row[pos_col].strip(),
+            "school": row[school_col].strip(),
+            "variance": row[variance_col].strip() if variance_col is not None else "",
+        }
+        out.append(record)
     return out
 
 

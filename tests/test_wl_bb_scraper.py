@@ -37,12 +37,30 @@ class TestParseBigBoard:
     """Tests for parse_big_board."""
 
     def test_parses_valid_rows(self):
-        """Verify numeric Ovr rows are turned into rank/name/pos/school records."""
+        """Verify numeric Ovr rows are turned into rank/name/pos/school/variance records."""
         rows = parse_big_board(_SAMPLE_CSV)
         assert rows == [
-            {"rank": "1", "name": "Fernando Mendoza", "pos": "QB", "school": "Indiana"},
-            {"rank": "2", "name": "Jeremiyah Love", "pos": "RB", "school": "Notre Dame"},
-            {"rank": "4", "name": "T.J. Parker", "pos": "EDGE", "school": "Clemson"},
+            {
+                "rank": "1",
+                "name": "Fernando Mendoza",
+                "pos": "QB",
+                "school": "Indiana",
+                "variance": "99.1",
+            },
+            {
+                "rank": "2",
+                "name": "Jeremiyah Love",
+                "pos": "RB",
+                "school": "Notre Dame",
+                "variance": "80.0",
+            },
+            {
+                "rank": "4",
+                "name": "T.J. Parker",
+                "pos": "EDGE",
+                "school": "Clemson",
+                "variance": "70.5",
+            },
         ]
 
     def test_handles_uppercase_player_header(self):
@@ -191,3 +209,23 @@ class TestParseBigBoardEdgeCases:
         )
         result = parse_big_board(csv_text)
         assert [r["name"] for r in result] == ["Real Player"]
+
+    def test_handles_sheet_without_variance_column(self):
+        """Verify older sheets that lack a Variance column yield empty variance strings."""
+        csv_text = (
+            "junk,,,,,,\n"
+            "junk,,,,,,\n"
+            "junk,,,,,,\n"
+            "Ovr,Fore,Eval,Player,School,Position,Pos Rk\n"
+            "1,1,1,Anon Player,Sch,QB,1\n"
+        )
+        result = parse_big_board(csv_text)
+        assert result == [
+            {
+                "rank": "1",
+                "name": "Anon Player",
+                "pos": "QB",
+                "school": "Sch",
+                "variance": "",
+            }
+        ]
