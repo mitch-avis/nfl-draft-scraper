@@ -560,7 +560,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "alice": {
-                "MDDB": 1,
+                "WL": 1,
                 "JLBB": 3,
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
@@ -572,7 +572,7 @@ class TestGetRankLists:
         bb_positions = {"alice": "QB"}
         bb_schools = {"alice": "MIT"}
         result = _get_rank_lists(picks, bb_lookup, ["alice"], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [1]
+        assert result["WL Rank"] == [1]
         assert result["JLBB Rank"] == [3]
         assert result["Consensus"] == [2.0]
         assert result["JL_Avg"] == [4.0]
@@ -592,7 +592,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "alice": {
-                "MDDB": 1,
+                "WL": 1,
                 "JLBB": 3,
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
@@ -604,7 +604,7 @@ class TestGetRankLists:
         bb_positions = {"alice": "QB"}
         bb_schools = {"alice": "MIT"}
         result = _get_rank_lists(picks, bb_lookup, ["alice"], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [None]
+        assert result["WL Rank"] == [None]
         assert result["JLBB Rank"] == [None]
         assert result["Consensus"] == [None]
         assert result["JL_Avg"] == [None]
@@ -624,7 +624,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "alice": {
-                "MDDB": 1,
+                "WL": 1,
                 "JLBB": 3,
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
@@ -633,7 +633,7 @@ class TestGetRankLists:
                 "Sources": 9,
             },
             "bob": {
-                "MDDB": 5,
+                "WL": 5,
                 "JLBB": 7,
                 "Consensus": 6.0,
                 "JL_Avg": 7.0,
@@ -645,7 +645,7 @@ class TestGetRankLists:
         bb_positions = {"alice": "QB", "bob": "RB"}
         bb_schools = {"alice": "MIT", "bob": "MIT"}
         result = _get_rank_lists(picks, bb_lookup, ["alice", "bob"], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [1, 5]
+        assert result["WL Rank"] == [1, 5]
         assert result["JLBB Rank"] == [3, 7]
         assert result["Consensus"] == [2.0, 6.0]
 
@@ -661,7 +661,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "ty robinson": {
-                "MDDB": 93,
+                "WL": 93,
                 "JLBB": 107,
                 "Consensus": 100.0,
                 "JL_Avg": 107.0,
@@ -673,7 +673,7 @@ class TestGetRankLists:
         bb_positions = {"ty robinson": "DL"}
         bb_schools = {"ty robinson": "Nebraska"}
         result = _get_rank_lists(picks, bb_lookup, ["ty robinson"], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [None]
+        assert result["WL Rank"] == [None]
         assert result["JLBB Rank"] == [None]
         assert result["Consensus"] == [None]
 
@@ -689,7 +689,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "carlos basham jr.": {
-                "MDDB": 48,
+                "WL": 48,
                 "JLBB": 40,
                 "Consensus": 46.5,
                 "JL_Avg": 45.9,
@@ -701,7 +701,7 @@ class TestGetRankLists:
         bb_positions = {"carlos basham jr.": "EDGE"}
         bb_schools = {"carlos basham jr.": "Wake Forest"}
         result = _get_rank_lists(picks, bb_lookup, ["carlos basham jr."], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [48]
+        assert result["WL Rank"] == [48]
         assert result["JLBB Rank"] == [40]
         assert result["Consensus"] == [46.5]
 
@@ -717,7 +717,7 @@ class TestGetRankLists:
         )
         bb_lookup = {
             "jartavius martin": {
-                "MDDB": 84,
+                "WL": 84,
                 "JLBB": 74,
                 "Consensus": 85.1,
                 "JL_Avg": 85.5,
@@ -729,7 +729,7 @@ class TestGetRankLists:
         bb_positions = {"jartavius martin": "S"}
         bb_schools = {"jartavius martin": "Illinois"}
         result = _get_rank_lists(picks, bb_lookup, ["jartavius martin"], bb_positions, bb_schools)
-        assert result["MDDB Rank"] == [84]
+        assert result["WL Rank"] == [84]
         assert result["JLBB Rank"] == [74]
         assert result["Consensus"] == [85.1]
 

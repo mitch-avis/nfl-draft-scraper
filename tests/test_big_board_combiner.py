@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from nfl_draft_scraper.big_board_combiner import (
-    MDDB_WEIGHT,
+    WL_WEIGHT,
     _best_match,
     _build_combined_rows,
     _clean_df,
@@ -126,129 +126,125 @@ class TestBuildCombinedRows:
 
     def test_both_sources_have_player(self):
         """Verify both sources have player."""
-        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [3], "pos": ["QB"], "school": ["MIT"]})
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks={}
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks={}
         )
         assert len(rows) == 1
-        assert rows[0]["MDDB"] == 1.0
+        assert rows[0]["WL"] == 1.0
         assert rows[0]["JLBB"] == 3.0
 
-    def test_only_mddb_has_player(self):
-        """Verify only mddb has player."""
-        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+    def test_only_wl_has_player(self):
+        """Verify only wl has player."""
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [2], "pos": ["WR"], "school": ["Stanford"]}
         )
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
         )
         assert len(rows) == 1
-        assert rows[0]["MDDB"] == 1.0
+        assert rows[0]["WL"] == 1.0
         assert rows[0]["JLBB"] is None
 
     def test_only_jlbb_has_player(self):
         """Verify only jlbb has player."""
-        mddb_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Alice"], "rank": [3], "pos": ["WR"], "school": ["Stanford"]}
         )
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks={}
+            ["Alice"], wl_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks={}
         )
         assert len(rows) == 1
-        assert rows[0]["MDDB"] is None
+        assert rows[0]["WL"] is None
         assert rows[0]["JLBB"] == 3.0
         assert rows[0]["School"] == "Stanford"
 
     def test_neither_source_has_player(self):
         """Verify neither source has player."""
-        mddb_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [2], "pos": ["WR"], "school": ["Stanford"]}
         )
-        rows = _build_combined_rows(
-            ["ZZZZZ"], mddb_df, jlbb_df, ["Bob"], ["Bob"], jl_source_ranks={}
-        )
+        rows = _build_combined_rows(["ZZZZZ"], wl_df, jlbb_df, ["Bob"], ["Bob"], jl_source_ranks={})
         assert len(rows) == 1
-        assert rows[0]["MDDB"] is None
+        assert rows[0]["WL"] is None
         assert rows[0]["JLBB"] is None
 
     def test_school_falls_back_to_jlbb(self):
-        """Verify JLBB school is used when MDDB has no match."""
-        mddb_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        """Verify JLBB school is used when WL has no match."""
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Alice"], "rank": [1], "pos": ["WR"], "school": ["Stanford"]}
         )
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks={}
+            ["Alice"], wl_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks={}
         )
         assert rows[0]["School"] == "Stanford"
 
     def test_weighted_consensus_both_sources(self):
-        """Verify weighted consensus when both MDDB and JL sources are present."""
-        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        """Verify weighted consensus when both WL and JL sources are present."""
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [3], "pos": ["QB"], "school": ["MIT"]})
         jl_source_ranks = {"Alice": [2.0, 4.0, 6.0]}
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks=jl_source_ranks
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks=jl_source_ranks
         )
-        assert rows[0]["MDDB"] == 1.0
+        assert rows[0]["WL"] == 1.0
         assert rows[0]["JLBB"] == 3.0
         assert rows[0]["JL_Avg"] == pytest.approx(4.0)
         assert rows[0]["JL_Sources"] == 3
         assert rows[0]["Consensus"] == pytest.approx(2.0)
-        assert rows[0]["Sources"] == 3 + MDDB_WEIGHT
+        assert rows[0]["Sources"] == 3 + WL_WEIGHT
 
     def test_weighted_consensus_only_jl(self):
         """Verify consensus equals JL avg when only JL sources are present."""
-        mddb_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Alice"], "rank": [1], "pos": ["WR"], "school": ["Stanford"]}
         )
         jl_source_ranks = {"Alice": [1.0, 3.0]}
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks=jl_source_ranks
+            ["Alice"], wl_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks=jl_source_ranks
         )
         assert rows[0]["JL_Avg"] == pytest.approx(2.0)
         assert rows[0]["JL_Sources"] == 2
         assert rows[0]["Consensus"] == pytest.approx(2.0)
         assert rows[0]["Sources"] == 2
 
-    def test_weighted_consensus_only_mddb(self):
-        """Verify consensus equals MDDB rank when only MDDB is present."""
-        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [5], "pos": ["QB"], "school": ["MIT"]})
+    def test_weighted_consensus_only_wl(self):
+        """Verify consensus equals WL rank when only WL is present."""
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [5], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [2], "pos": ["WR"], "school": ["Stanford"]}
         )
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
         )
         assert rows[0]["Consensus"] == pytest.approx(5.0)
-        assert rows[0]["Sources"] == MDDB_WEIGHT
+        assert rows[0]["Sources"] == WL_WEIGHT
         assert rows[0]["JL_Avg"] is None
         assert rows[0]["JL_Sources"] is None
 
     def test_weighted_consensus_neither_source(self):
         """Verify consensus is None when neither source has the player."""
-        mddb_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [2], "pos": ["WR"], "school": ["Stanford"]}
         )
-        rows = _build_combined_rows(
-            ["ZZZZZ"], mddb_df, jlbb_df, ["Bob"], ["Bob"], jl_source_ranks={}
-        )
+        rows = _build_combined_rows(["ZZZZZ"], wl_df, jlbb_df, ["Bob"], ["Bob"], jl_source_ranks={})
         assert rows[0]["Consensus"] is None
         assert rows[0]["Sources"] is None
 
     def test_jl_sd_populated(self):
         """Verify JL_SD is computed from JL source ranks."""
-        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jl_source_ranks = {"Alice": [3.0, 3.0, 3.0]}
         rows = _build_combined_rows(
-            ["Alice"], mddb_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks=jl_source_ranks
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks=jl_source_ranks
         )
         assert rows[0]["JL_SD"] == pytest.approx(0.0)
 

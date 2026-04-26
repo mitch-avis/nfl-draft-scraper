@@ -24,8 +24,8 @@ Value (AV) metrics from Pro Football Reference.
 
 ## Features
 
-- **Multi-source big board scraping** — collects prospect rankings from NFL Mock Draft Database
-  (MDDB) and Jacklich10 (JLBB)
+- **Multi-source big board scraping** — collects prospect rankings from Wide Left's Arif Hasan
+  consensus board (WL) and Jacklich10 (JLBB)
 - **Fuzzy name matching** — reconciles player names across sources using `difflib` similarity
   matching
 - **Combined rankings** — averages rankings from multiple big boards into a unified prospect ranking
@@ -43,10 +43,10 @@ nfl-draft-scraper/
 ├── nfl_draft_scraper/
 │   ├── __init__.py
 │   ├── constants.py              # Paths, year range, base URLs
-│   ├── big_board_combiner.py     # Combine MDDB + JLBB boards
+│   ├── big_board_combiner.py     # Combine WL + JLBB boards
 │   ├── draft_picks_cleaner.py    # Clean raw draft picks CSV
 │   ├── jl_bb_scraper.py          # Playwright scraper for jacklich10.com
-│   ├── mddb_bb_scraper.py        # Requests + JSON scraper for nflmockdraftdatabase.com
+│   ├── wl_bb_scraper.py          # CSV scraper for Arif Hasan's Wide Left big boards
 │   ├── merge_bb_ranks_to_picks.py # Merge big board ranks into draft picks
 │   ├── pipeline.py               # Pipeline orchestrator (smart re-run)
 │   ├── scrape_av.py              # AV enrichment via sportsipy + PFR fallback
@@ -112,7 +112,7 @@ python -m nfl_draft_scraper.pipeline scrape-av --force
 
 | Stage         | Description                         | Output                                        |
 | ------------- | ----------------------------------- | --------------------------------------------- |
-| `scrape-mddb` | Scrape MDDB consensus big boards    | `mddb_big_board_{year}.csv`                   |
+| `scrape-wl`   | Scrape Wide Left consensus boards   | `wl_big_board_{year}.csv`                     |
 | `scrape-jlbb` | Scrape JLBB big boards (Playwright) | `jl_big_board_{year}.csv`                     |
 | `combine`     | Fuzzy-match and merge both sources  | `combined_big_board_{year}.csv`               |
 | `clean-picks` | Clean raw draft picks CSV           | `cleaned_draft_picks.csv`                     |
@@ -124,7 +124,7 @@ python -m nfl_draft_scraper.pipeline scrape-av --force
 Each stage can also be run as a standalone script:
 
 ```bash
-python -m nfl_draft_scraper.mddb_bb_scraper       # MDDB big boards
+python -m nfl_draft_scraper.wl_bb_scraper        # WL big boards (Google Sheets CSV)
 python -m nfl_draft_scraper.jl_bb_scraper          # JLBB big boards (Playwright)
 python -m nfl_draft_scraper.big_board_combiner     # Combine boards
 python -m nfl_draft_scraper.draft_picks_cleaner    # Clean draft picks
@@ -182,7 +182,7 @@ The pipeline orchestrator (`pipeline.py`) runs stages in this order, skipping an
 already exists:
 
 ```text
-1. scrape-mddb     → data/mddb_big_board_{year}.csv
+1. scrape-wl       → data/wl_big_board_{year}.csv
 2. scrape-jlbb     → data/jl_big_board_{year}.csv
 3. combine         → data/combined_big_board_{year}.csv
 4. clean-picks     → data/cleaned_draft_picks.csv
@@ -194,7 +194,7 @@ Each stage reads from the output of previous stages. The orchestrator runs them 
 steps 1–2 are independent of steps 4–5, so either group can be skipped or forced on its own.
 
 **Final output columns** (per-year CSVs): `round`, `round_pick`, `overall_pick`, `team`,
-`pfr_player_id`, `player`, `position`, `category`, `college`, `MDDB Rank`, `JLBB Rank`, `AvgRank`,
+`pfr_player_id`, `player`, `position`, `category`, `college`, `WL Rank`, `JLBB Rank`, `AvgRank`,
 plus per-season AV columns, `career`, and `weighted_career`.
 
 ## License

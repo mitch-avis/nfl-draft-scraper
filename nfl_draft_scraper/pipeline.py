@@ -4,9 +4,9 @@ Coordinates the full data pipeline with on-demand logic: checks which data alrea
 runs the stages that are needed (or that the user explicitly requests).
 
 Stages, in dependency order:
-  1. scrape-mddb   — scrape MDDB big boards
+  1. scrape-wl     — scrape Wide Left big boards
   2. scrape-jlbb   — scrape JLBB big boards (Playwright)
-  3. combine        — combine MDDB + JLBB into unified boards
+  3. combine        — combine WL + JLBB into unified boards
   4. clean-picks    — clean the raw draft_picks.csv
   5. scrape-av      — enrich cleaned picks with AV data
   6. merge          — merge big board ranks into AV-enriched picks
@@ -24,15 +24,19 @@ from collections.abc import Callable
 from nfl_draft_scraper import constants
 from nfl_draft_scraper.utils.logger import log
 
-STAGES = ("scrape-mddb", "scrape-jlbb", "combine", "clean-picks", "scrape-av", "merge")
+STAGES = ("scrape-wl", "scrape-jlbb", "combine", "clean-picks", "scrape-av", "merge")
 
 
-def _mddb_files_exist() -> bool:
-    """Return True if all MDDB big board CSVs exist for the year range."""
-    return all(
-        (constants.DATA_PATH / f"mddb_big_board_{y}.csv").exists()
+def _wl_files_exist() -> bool:
+    """Return True if all Wide Left big board CSVs exist for the configured years."""
+    years = [
+        y
         for y in range(constants.START_YEAR, constants.END_YEAR + 1)
-    )
+        if y in constants.WL_SHEET_IDS
+    ]
+    if not years:
+        return True
+    return all((constants.DATA_PATH / f"wl_big_board_{y}.csv").exists() for y in years)
 
 
 def _jlbb_files_exist() -> bool:
@@ -69,12 +73,12 @@ def _merged_files_exist() -> bool:
     )
 
 
-def _run_scrape_mddb() -> None:
-    """Run the MDDB big board scraper."""
-    from nfl_draft_scraper.mddb_bb_scraper import main as mddb_main
+def _run_scrape_wl() -> None:
+    """Run the Wide Left big board scraper."""
+    from nfl_draft_scraper.wl_bb_scraper import main as wl_main
 
-    log.info("=== Stage: scrape-mddb ===")
-    mddb_main()
+    log.info("=== Stage: scrape-wl ===")
+    wl_main()
 
 
 def _run_scrape_jlbb() -> None:
@@ -124,7 +128,7 @@ _RunFn = Callable[[], None]
 def _stage_runners() -> dict[str, tuple[_CheckFn, _RunFn]]:
     """Build stage runner mapping at call time so test patches are respected."""
     return {
-        "scrape-mddb": (_mddb_files_exist, _run_scrape_mddb),
+        "scrape-wl": (_wl_files_exist, _run_scrape_wl),
         "scrape-jlbb": (_jlbb_files_exist, _run_scrape_jlbb),
         "combine": (_combined_files_exist, _run_combine),
         "clean-picks": (_cleaned_picks_exist, _run_clean_picks),
@@ -168,9 +172,9 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "stages (in dependency order):\n"
-            "  scrape-mddb   Scrape MDDB big boards\n"
+            "  scrape-wl     Scrape Wide Left big boards\n"
             "  scrape-jlbb   Scrape JLBB big boards (Playwright)\n"
-            "  combine       Combine MDDB + JLBB boards\n"
+            "  combine       Combine WL + JLBB boards\n"
             "  clean-picks   Clean raw draft_picks.csv\n"
             "  scrape-av     Enrich picks with AV data\n"
             "  merge         Merge big board ranks into picks\n"

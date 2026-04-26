@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from nfl_draft_scraper.big_board_combiner import MDDB_WEIGHT, _combine_year, main
+from nfl_draft_scraper.big_board_combiner import WL_WEIGHT, _combine_year, main
 
 
 class TestCombineYear:
@@ -12,7 +12,7 @@ class TestCombineYear:
         """Verify combines two boards with weighted consensus."""
         monkeypatch.setattr("nfl_draft_scraper.big_board_combiner.constants.DATA_PATH", tmp_path)
 
-        mddb = pl.DataFrame(
+        wl = pl.DataFrame(
             {
                 "name": ["Alice Smith", "Bob Jones", "Charlie Brown"],
                 "rank": [1, 2, 3],
@@ -33,7 +33,7 @@ class TestCombineYear:
                 "PFF": [2, 2, 3],
             }
         )
-        mddb.write_csv(tmp_path / "mddb_big_board_2020.csv")
+        wl.write_csv(tmp_path / "wl_big_board_2020.csv")
         jlbb.write_csv(tmp_path / "jl_big_board_2020.csv")
 
         _combine_year(2020)
@@ -49,16 +49,16 @@ class TestCombineYear:
             "JL_SD",
             "JL_Sources",
             "Sources",
-            "MDDB",
+            "WL",
             "JLBB",
         ):
             assert col in result.columns
 
     def test_handles_no_overlap(self, tmp_path, monkeypatch):
-        """Verify handles no overlap — MDDB-only gets MDDB_WEIGHT sources."""
+        """Verify handles no overlap — WL-only gets WL_WEIGHT sources."""
         monkeypatch.setattr("nfl_draft_scraper.big_board_combiner.constants.DATA_PATH", tmp_path)
 
-        mddb = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        wl = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb = pl.DataFrame(
             {
                 "name": ["Bob"],
@@ -68,7 +68,7 @@ class TestCombineYear:
                 "ESPN": [1],
             }
         )
-        mddb.write_csv(tmp_path / "mddb_big_board_2021.csv")
+        wl.write_csv(tmp_path / "wl_big_board_2021.csv")
         jlbb.write_csv(tmp_path / "jl_big_board_2021.csv")
 
         _combine_year(2021)
@@ -76,7 +76,7 @@ class TestCombineYear:
         result = pl.read_csv(tmp_path / "combined_big_board_2021.csv")
         assert result.height == 2
         alice = result.filter(pl.col("Player") == "Alice").row(0, named=True)
-        assert alice["Sources"] == MDDB_WEIGHT
+        assert alice["Sources"] == WL_WEIGHT
 
 
 class TestMain:
@@ -89,7 +89,7 @@ class TestMain:
         monkeypatch.setattr("nfl_draft_scraper.big_board_combiner.constants.END_YEAR", 2021)
 
         for year in (2020, 2021):
-            mddb = pl.DataFrame({"name": ["P1"], "rank": [1], "pos": ["QB"], "school": ["U"]})
+            wl = pl.DataFrame({"name": ["P1"], "rank": [1], "pos": ["QB"], "school": ["U"]})
             jlbb = pl.DataFrame(
                 {
                     "name": ["P1"],
@@ -99,7 +99,7 @@ class TestMain:
                     "ESPN": [1],
                 }
             )
-            mddb.write_csv(tmp_path / f"mddb_big_board_{year}.csv")
+            wl.write_csv(tmp_path / f"wl_big_board_{year}.csv")
             jlbb.write_csv(tmp_path / f"jl_big_board_{year}.csv")
 
         main()

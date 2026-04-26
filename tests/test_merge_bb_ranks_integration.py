@@ -25,7 +25,7 @@ class TestReorderAndSave:
                 "position": ["QB"],
                 "category": ["O"],
                 "college": ["Clemson"],
-                "MDDB Rank": [1.0],
+                "WL Rank": [1.0],
                 "JLBB Rank": [1.0],
                 "Consensus": [1.0],
                 "JL_Avg": [1.5],
@@ -84,7 +84,7 @@ class TestMergeBigBoardRanksForYear:
                 "Player": ["Joe Burrow", "Tee Higgins"],
                 "Position": ["QB", "WR"],
                 "School": ["LSU", "Clemson"],
-                "MDDB": [1, 25],
+                "WL": [1, 25],
                 "JLBB": [1, 30],
                 "JL_Avg": [1.5, 28.0],
                 "JL_SD": [0.5, 3.0],
@@ -100,7 +100,7 @@ class TestMergeBigBoardRanksForYear:
         output = tmp_path / "draft_picks_with_big_board_ranks_2020.csv"
         assert output.exists()
         result = pl.read_csv(output)
-        assert "MDDB Rank" in result.columns
+        assert "WL Rank" in result.columns
         assert "JLBB Rank" in result.columns
         assert "Consensus" in result.columns
         assert "JL_Avg" in result.columns
@@ -164,7 +164,7 @@ class TestMergeBigBoardRanksForYear:
                 "Player": ["P1"],
                 "Position": ["QB"],
                 "School": ["School1"],
-                "MDDB": [1],
+                "WL": [1],
                 "JLBB": [1],
                 "JL_Avg": [1.5],
                 "JL_SD": [0.5],
@@ -211,7 +211,7 @@ class TestMain:
                 "Player": ["Joe Burrow"],
                 "Position": ["QB"],
                 "School": ["LSU"],
-                "MDDB": [1],
+                "WL": [1],
                 "JLBB": [1],
                 "JL_Avg": [1.5],
                 "JL_SD": [0.5],

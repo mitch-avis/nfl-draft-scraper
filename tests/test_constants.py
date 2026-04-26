@@ -31,8 +31,13 @@ class TestConstants:
 
     def test_urls_are_https(self):
         """Verify urls are https."""
-        assert constants.MOCK_DRAFT_DB_BASE_URL.startswith("https://")
         assert constants.JLBB_BASE_URL.startswith("https://")
+
+    def test_wl_sheet_ids_present(self):
+        """Verify Wide Left sheet ids exist for the supported years."""
+        assert {2024, 2025, 2026} <= set(constants.WL_SHEET_IDS)
+        for sheet_id in constants.WL_SHEET_IDS.values():
+            assert sheet_id and isinstance(sheet_id, str)
 
 
 class TestTeamAbbreviationMap:

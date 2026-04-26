@@ -30,8 +30,15 @@ def _most_recent_completed_season() -> int:
 
 END_YEAR: int = _most_recent_completed_season()
 
-MOCK_DRAFT_DB_BASE_URL = "https://www.nflmockdraftdatabase.com/big-boards"
 JLBB_BASE_URL = "https://jacklich10.com/bigboard/nfl/"
+
+# Google Sheet ids for Arif Hasan's Wide Left consensus big boards. Sheets are public; the scraper
+# downloads each one as CSV via the standard gviz export URL.
+WL_SHEET_IDS: dict[int, str] = {
+    2024: "1u_7bYeFLyPGldL6OqvyEXICH4LCvNZb_iqc2Z3740mo",
+    2025: "1IUxTL9PXAmkasscUiGVYovtdKo7tawIuzXdMfDzmqI4",
+    2026: "1kMMdFfdPhcIlmSRFWnKVzx3IGm5VODx5oqJRraGms5E",
+}
 
 # Map historical team abbreviations to their current equivalents. Only relocated/rebranded
 # franchises need entries here.

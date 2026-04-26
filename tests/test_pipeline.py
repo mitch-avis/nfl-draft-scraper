@@ -9,8 +9,8 @@ from nfl_draft_scraper.pipeline import (
     _cleaned_picks_exist,
     _combined_files_exist,
     _jlbb_files_exist,
-    _mddb_files_exist,
     _merged_files_exist,
+    _wl_files_exist,
     run_pipeline,
 )
 
@@ -18,10 +18,18 @@ from nfl_draft_scraper.pipeline import (
 class TestFileExistenceChecks:
     """Tests for pipeline file-existence helpers."""
 
-    def test_mddb_files_missing(self, tmp_path, monkeypatch):
-        """Verify returns False when MDDB files are missing."""
+    def test_wl_files_missing(self, tmp_path, monkeypatch):
+        """Verify returns False when WL files are missing."""
         monkeypatch.setattr("nfl_draft_scraper.pipeline.constants.DATA_PATH", tmp_path)
-        assert _mddb_files_exist() is False
+        assert _wl_files_exist() is False
+
+    def test_wl_files_returns_true_when_no_year_in_range_has_a_sheet(self, tmp_path, monkeypatch):
+        """Verify returns True when no year in range has a configured WL sheet id."""
+        monkeypatch.setattr("nfl_draft_scraper.pipeline.constants.DATA_PATH", tmp_path)
+        monkeypatch.setattr("nfl_draft_scraper.pipeline.constants.START_YEAR", 2018)
+        monkeypatch.setattr("nfl_draft_scraper.pipeline.constants.END_YEAR", 2020)
+        monkeypatch.setattr("nfl_draft_scraper.pipeline.constants.WL_SHEET_IDS", {})
+        assert _wl_files_exist() is True
 
     def test_jlbb_files_missing(self, tmp_path, monkeypatch):
         """Verify returns False when JLBB files are missing."""
@@ -64,25 +72,25 @@ class TestFileExistenceChecks:
 class TestRunPipeline:
     """Tests for run_pipeline."""
 
-    @patch("nfl_draft_scraper.pipeline._run_scrape_mddb")
-    @patch("nfl_draft_scraper.pipeline._mddb_files_exist", return_value=True)
+    @patch("nfl_draft_scraper.pipeline._run_scrape_wl")
+    @patch("nfl_draft_scraper.pipeline._wl_files_exist", return_value=True)
     def test_skips_existing_data(self, mock_check, mock_run):
         """Verify stages are skipped when data already exists."""
-        run_pipeline(stages=["scrape-mddb"], force=False)
+        run_pipeline(stages=["scrape-wl"], force=False)
         mock_run.assert_not_called()
 
-    @patch("nfl_draft_scraper.pipeline._run_scrape_mddb")
-    @patch("nfl_draft_scraper.pipeline._mddb_files_exist", return_value=True)
+    @patch("nfl_draft_scraper.pipeline._run_scrape_wl")
+    @patch("nfl_draft_scraper.pipeline._wl_files_exist", return_value=True)
     def test_force_runs_even_if_exists(self, mock_check, mock_run):
         """Verify force flag overrides skip logic."""
-        run_pipeline(stages=["scrape-mddb"], force=True)
+        run_pipeline(stages=["scrape-wl"], force=True)
         mock_run.assert_called_once()
 
-    @patch("nfl_draft_scraper.pipeline._run_scrape_mddb")
-    @patch("nfl_draft_scraper.pipeline._mddb_files_exist", return_value=False)
+    @patch("nfl_draft_scraper.pipeline._run_scrape_wl")
+    @patch("nfl_draft_scraper.pipeline._wl_files_exist", return_value=False)
     def test_runs_when_missing(self, mock_check, mock_run):
         """Verify stages run when data is missing."""
-        run_pipeline(stages=["scrape-mddb"], force=False)
+        run_pipeline(stages=["scrape-wl"], force=False)
         mock_run.assert_called_once()
 
     def test_unknown_stage_does_not_raise(self):
@@ -109,8 +117,8 @@ class TestBuildParser:
     def test_stages_argument(self):
         """Verify stage names are parsed."""
         parser = _build_parser()
-        args = parser.parse_args(["scrape-mddb", "combine"])
-        assert args.stages == ["scrape-mddb", "combine"]
+        args = parser.parse_args(["scrape-wl", "combine"])
+        assert args.stages == ["scrape-wl", "combine"]
 
 
 class TestStagesConstant:
@@ -119,7 +127,7 @@ class TestStagesConstant:
     def test_stages_order(self):
         """Verify stages are in the expected dependency order."""
         assert STAGES == (
-            "scrape-mddb",
+            "scrape-wl",
             "scrape-jlbb",
             "combine",
             "clean-picks",
@@ -131,12 +139,12 @@ class TestStagesConstant:
 class TestRunners:
     """Tests for the per-stage `_run_*` runner helpers."""
 
-    def test_run_scrape_mddb_invokes_main(self):
-        """Verify _run_scrape_mddb calls mddb_bb_scraper.main."""
-        from nfl_draft_scraper.pipeline import _run_scrape_mddb
+    def test_run_scrape_wl_invokes_main(self):
+        """Verify _run_scrape_wl calls wl_bb_scraper.main."""
+        from nfl_draft_scraper.pipeline import _run_scrape_wl
 
-        with patch("nfl_draft_scraper.mddb_bb_scraper.main") as mock_main:
-            _run_scrape_mddb()
+        with patch("nfl_draft_scraper.wl_bb_scraper.main") as mock_main:
+            _run_scrape_wl()
             mock_main.assert_called_once()
 
     def test_run_scrape_jlbb_invokes_main(self):
@@ -196,10 +204,10 @@ class TestMain:
         """Verify main forwards stage names and the --force flag to run_pipeline."""
         from nfl_draft_scraper import pipeline
 
-        monkeypatch.setattr("sys.argv", ["pipeline.py", "scrape-mddb", "--force"])
+        monkeypatch.setattr("sys.argv", ["pipeline.py", "scrape-wl", "--force"])
         with patch("nfl_draft_scraper.pipeline.run_pipeline") as mock_run:
             pipeline.main()
-            mock_run.assert_called_once_with(stages=["scrape-mddb"], force=True)
+            mock_run.assert_called_once_with(stages=["scrape-wl"], force=True)
 
     def test_main_handles_keyboard_interrupt(self, monkeypatch):
         """Verify main exits with code 130 on Ctrl-C during run_pipeline."""

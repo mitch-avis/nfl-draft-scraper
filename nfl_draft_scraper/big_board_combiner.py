@@ -1,14 +1,14 @@
 """Module to clean and combine NFL draft big board data from multiple sources.
 
-Reads CSVs from MDDB and JL, deduplicates and sorts them, then fuzzy-matches player names to produce
-a unified combined CSV per year.
+Reads CSVs from Wide Left (WL) and JL, deduplicates and sorts them, then fuzzy-matches player
+names to produce a unified combined CSV per year.
 
-The weighted consensus formula treats each JL individual-source rank as one vote and the single MDDB
-composite rank as ``MDDB_WEIGHT`` votes:
+The weighted consensus formula treats each JL individual-source rank as one vote and the single WL
+composite rank as ``WL_WEIGHT`` votes:
 
-    consensus = (jl_avg × jl_n + mddb_rank × MDDB_WEIGHT) / (jl_n + MDDB_WEIGHT)
+    consensus = (jl_avg × jl_n + wl_rank × WL_WEIGHT) / (jl_n + WL_WEIGHT)
 
-When only one board has a player, that board's value (JL avg or MDDB rank) is used directly.
+When only one board has a player, that board's value (JL avg or WL rank) is used directly.
 """
 
 from __future__ import annotations
@@ -27,10 +27,10 @@ from nfl_draft_scraper.merge_bb_ranks_to_picks import (
 )
 from nfl_draft_scraper.utils.logger import log
 
-# Fixed weight assigned to the MDDB composite rank when computing the weighted consensus.
-# Represents roughly the number of unique, high-quality sources in the MDDB pool that are not
+# Fixed weight assigned to the WL composite rank when computing the weighted consensus.
+# Represents roughly the number of unique, high-quality sources in the WL pool that are not
 # already captured by JL's individual sources.
-MDDB_WEIGHT: int = 6
+WL_WEIGHT: int = 6
 
 # Columns in the JL CSV that are metadata, not source-rank columns.
 _JL_META_COLUMNS = frozenset({"rank", "name", "pos", "school", "conference", "avg", "sd"})
@@ -93,9 +93,9 @@ def _get_record(player: str, df: pl.DataFrame, names: list[str]) -> dict[str, An
 
 def _build_combined_rows(
     all_players: Iterable[str],
-    mddb_df: pl.DataFrame,
+    wl_df: pl.DataFrame,
     jlbb_df: pl.DataFrame,
-    mddb_names: list[str],
+    wl_names: list[str],
     jlbb_names: list[str],
     *,
     jl_source_ranks: dict[str, list[float]],
@@ -103,15 +103,15 @@ def _build_combined_rows(
     """Build combined rows for all players with weighted consensus ranking."""
     combined_rows: list[dict[str, str | float | int | None]] = []
     for player in all_players:
-        mddb_record = _get_record(player, mddb_df, mddb_names)
+        wl_record = _get_record(player, wl_df, wl_names)
         jlbb_record = _get_record(player, jlbb_df, jlbb_names)
 
-        # --- MDDB rank ---
-        md_rank: int | None = None
-        if mddb_record is not None:
-            raw_md = mddb_record.get("rank")
-            if raw_md is not None:
-                md_rank = int(raw_md)
+        # --- WL rank ---
+        wl_rank: int | None = None
+        if wl_record is not None:
+            raw_wl = wl_record.get("rank")
+            if raw_wl is not None:
+                wl_rank = int(raw_wl)
 
         # --- JLBB composite rank ---
         jlbb_rank: float | None = None
@@ -133,31 +133,31 @@ def _build_combined_rows(
         # --- Weighted consensus ---
         consensus: float | None
         total_sources: int | None
-        if md_rank is not None and jl_avg is not None:
-            consensus = (jl_avg * jl_n + md_rank * MDDB_WEIGHT) / (jl_n + MDDB_WEIGHT)
-            total_sources = jl_n + MDDB_WEIGHT
+        if wl_rank is not None and jl_avg is not None:
+            consensus = (jl_avg * jl_n + wl_rank * WL_WEIGHT) / (jl_n + WL_WEIGHT)
+            total_sources = jl_n + WL_WEIGHT
         elif jl_avg is not None:
             consensus = jl_avg
             total_sources = jl_n
-        elif md_rank is not None:
-            consensus = float(md_rank)
-            total_sources = MDDB_WEIGHT
+        elif wl_rank is not None:
+            consensus = float(wl_rank)
+            total_sources = WL_WEIGHT
         else:
             consensus = None
             total_sources = None
 
         # --- Position / School ---
-        mddb_pos = ""
-        if mddb_record is not None and mddb_record.get("pos") is not None:
-            mddb_pos = str(mddb_record["pos"])
+        wl_pos = ""
+        if wl_record is not None and wl_record.get("pos") is not None:
+            wl_pos = str(wl_record["pos"])
 
         jlbb_pos = ""
         if jlbb_record is not None and jlbb_record.get("pos") is not None:
             jlbb_pos = str(jlbb_record["pos"])
 
-        mddb_school = ""
-        if mddb_record is not None and mddb_record.get("school") is not None:
-            mddb_school = str(mddb_record["school"])
+        wl_school = ""
+        if wl_record is not None and wl_record.get("school") is not None:
+            wl_school = str(wl_record["school"])
 
         jlbb_school = ""
         if jlbb_record is not None and jlbb_record.get("school") is not None:
@@ -166,9 +166,9 @@ def _build_combined_rows(
         combined_rows.append(
             {
                 "Player": player,
-                "Position": mddb_pos if mddb_pos else jlbb_pos,
-                "School": mddb_school if mddb_school else jlbb_school,
-                "MDDB": float(md_rank) if md_rank is not None else None,
+                "Position": wl_pos if wl_pos else jlbb_pos,
+                "School": wl_school if wl_school else jlbb_school,
+                "WL": float(wl_rank) if wl_rank is not None else None,
                 "JLBB": jlbb_rank,
                 "JL_Avg": round(jl_avg, 4) if jl_avg is not None else None,
                 "JL_SD": round(jl_sd, 4) if jl_sd is not None else None,
@@ -204,7 +204,7 @@ _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "Player": pl.String,
     "Position": pl.String,
     "School": pl.String,
-    "MDDB": pl.Float64,
+    "WL": pl.Float64,
     "JLBB": pl.Float64,
     "JL_Avg": pl.Float64,
     "JL_SD": pl.Float64,
@@ -215,19 +215,19 @@ _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
 
 
 def _combine_year(year: int) -> None:
-    """Read MDDB and JL CSVs for the given year, clean and combine them.
+    """Read WL and JL CSVs for the given year, clean and combine them.
 
-    Fuzzy-match names and write out a combined CSV with columns: Player, Position, School, MDDB,
+    Fuzzy-match names and write out a combined CSV with columns: Player, Position, School, WL,
     JLBB, JL_Avg, JL_SD, JL_Sources, Consensus, Sources.
     """
     log.info("Combining big boards for year %s", year)
-    mddb_path = constants.DATA_PATH / f"mddb_big_board_{year}.csv"
+    wl_path = constants.DATA_PATH / f"wl_big_board_{year}.csv"
     jlbb_path = constants.DATA_PATH / f"jl_big_board_{year}.csv"
-    log.info("Reading MDDB from %s", mddb_path)
+    log.info("Reading WL from %s", wl_path)
     log.info("Reading JLBB from %s", jlbb_path)
 
-    mddb_df = _clean_df(
-        pl.read_csv(mddb_path),
+    wl_df = _clean_df(
+        pl.read_csv(wl_path),
         ["name", "pos", "school", "rank"],
     )
 
@@ -242,32 +242,32 @@ def _combine_year(year: int) -> None:
 
     jlbb_df = _clean_df(jl_raw, ["name", "pos", "school", "rank"])
 
-    mddb_names = mddb_df["name"].to_list()
+    wl_names = wl_df["name"].to_list()
     jlbb_names = jlbb_df["name"].to_list()
-    all_players = sorted(set(mddb_names) | set(jlbb_names))
+    all_players = sorted(set(wl_names) | set(jlbb_names))
     log.info("Total unique players to combine: %d", len(all_players))
 
     combined_rows = _build_combined_rows(
-        all_players, mddb_df, jlbb_df, mddb_names, jlbb_names, jl_source_ranks=jl_source_ranks
+        all_players, wl_df, jlbb_df, wl_names, jlbb_names, jl_source_ranks=jl_source_ranks
     )
 
     result_df = pl.DataFrame(combined_rows, schema=_COMBINED_SCHEMA)
     log.info("Combined DataFrame shape before deduplication: %s", result_df.shape)
 
-    # Sort by consensus, then MDDB, then JLBB
-    result_df = result_df.sort(["Consensus", "MDDB", "JLBB"], nulls_last=True)
-    # Dedupe identical entries (same MDDB, JLBB, Consensus), keeping the longest name
+    # Sort by consensus, then WL, then JLBB
+    result_df = result_df.sort(["Consensus", "WL", "JLBB"], nulls_last=True)
+    # Dedupe identical entries (same WL, JLBB, Consensus), keeping the longest name
     result_df = result_df.with_columns(pl.col("Player").str.len_chars().alias("name_len"))
     result_df = result_df.sort(
-        ["MDDB", "JLBB", "Consensus", "name_len"],
+        ["WL", "JLBB", "Consensus", "name_len"],
         descending=[False, False, False, True],
         nulls_last=True,
     )
     result_df = result_df.unique(
-        subset=["MDDB", "JLBB", "Consensus"], keep="first", maintain_order=True
+        subset=["WL", "JLBB", "Consensus"], keep="first", maintain_order=True
     ).drop("name_len")
-    # Final sort by Consensus, then MDDB, then JLBB
-    result_df = result_df.sort(["Consensus", "MDDB", "JLBB"], nulls_last=True)
+    # Final sort by Consensus, then WL, then JLBB
+    result_df = result_df.sort(["Consensus", "WL", "JLBB"], nulls_last=True)
 
     output_path = constants.DATA_PATH / f"combined_big_board_{year}.csv"
     result_df.write_csv(output_path)
