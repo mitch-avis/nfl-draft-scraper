@@ -177,6 +177,175 @@ class TestMergeBigBoardRanksForYear:
         # Year 2020 has no picks — should not raise
         _merge_big_board_ranks_for_year(2020)
 
+    def test_falls_back_to_cleaned_picks_when_av_missing(self, tmp_path, monkeypatch):
+        """Verify the merge runs against cleaned_draft_picks.csv when AV file is absent."""
+        monkeypatch.setattr(
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
+        )
+        picks_df = pl.DataFrame(
+            {
+                "season": [2026],
+                "round": [1],
+                "pick": [1],
+                "team": ["CAR"],
+                "pfr_player_id": ["id1"],
+                "pfr_player_name": ["Fernando Mendoza"],
+                "position": ["QB"],
+                "category": ["O"],
+                "college": ["Indiana"],
+            }
+        )
+        picks_df.write_csv(tmp_path / "cleaned_draft_picks.csv")
+        bb_df = pl.DataFrame(
+            {
+                "Player": ["Fernando Mendoza"],
+                "Position": ["QB"],
+                "School": ["Indiana"],
+                "WL": [1],
+                "JLBB": [4],
+                "JL_Avg": [4.3],
+                "JL_SD": [5.9],
+                "JL_Sources": [14],
+                "Consensus": [3.8],
+                "Sources": [54],
+            }
+        )
+        bb_df.write_csv(tmp_path / "combined_big_board_2026.csv")
+
+        _merge_big_board_ranks_for_year(2026)
+
+        output = tmp_path / "draft_picks_with_big_board_ranks_2026.csv"
+        assert output.exists()
+        result = pl.read_csv(output)
+        assert result.height == 1
+        assert "WL Rank" in result.columns
+        # No AV file → no per-season AV columns in the output.
+        assert "2026" not in result.columns
+        assert "career" not in result.columns
+
+    def test_falls_back_when_av_file_lacks_year(self, tmp_path, monkeypatch):
+        """Verify cleaned_draft_picks.csv is used when AV file has no rows for the year."""
+        monkeypatch.setattr(
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
+        )
+        # AV file exists but only covers an earlier season.
+        av_df = pl.DataFrame(
+            {
+                "season": [2025],
+                "round": [1],
+                "pick": [1],
+                "team": ["TEN"],
+                "pfr_player_id": ["id0"],
+                "pfr_player_name": ["Cam Ward"],
+                "position": ["QB"],
+                "category": ["O"],
+                "college": ["Miami"],
+                "2025": [3],
+                "career": [3],
+                "weighted_career": [3.0],
+            }
+        )
+        av_df.write_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        cleaned_df = pl.DataFrame(
+            {
+                "season": [2026],
+                "round": [1],
+                "pick": [1],
+                "team": ["CAR"],
+                "pfr_player_id": ["id1"],
+                "pfr_player_name": ["Fernando Mendoza"],
+                "position": ["QB"],
+                "category": ["O"],
+                "college": ["Indiana"],
+            }
+        )
+        cleaned_df.write_csv(tmp_path / "cleaned_draft_picks.csv")
+        bb_df = pl.DataFrame(
+            {
+                "Player": ["Fernando Mendoza"],
+                "Position": ["QB"],
+                "School": ["Indiana"],
+                "WL": [1],
+                "JLBB": [4],
+                "JL_Avg": [4.3],
+                "JL_SD": [5.9],
+                "JL_Sources": [14],
+                "Consensus": [3.8],
+                "Sources": [54],
+            }
+        )
+        bb_df.write_csv(tmp_path / "combined_big_board_2026.csv")
+
+        _merge_big_board_ranks_for_year(2026)
+
+        output = tmp_path / "draft_picks_with_big_board_ranks_2026.csv"
+        assert output.exists()
+        result = pl.read_csv(output)
+        assert result.height == 1
+        assert result["player"][0] == "Fernando Mendoza"
+        assert "2025" not in result.columns
+
+    def test_skips_when_no_picks_file_at_all(self, tmp_path, monkeypatch):
+        """Verify the merge logs and returns when neither AV nor cleaned picks file exists."""
+        monkeypatch.setattr(
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
+        )
+        bb_df = pl.DataFrame(
+            {
+                "Player": ["P1"],
+                "Position": ["QB"],
+                "School": ["S"],
+                "WL": [1],
+                "JLBB": [1],
+                "JL_Avg": [1.0],
+                "JL_SD": [0.0],
+                "JL_Sources": [1],
+                "Consensus": [1.0],
+                "Sources": [1],
+            }
+        )
+        bb_df.write_csv(tmp_path / "combined_big_board_2026.csv")
+        # No picks file of any kind → must not raise, must not produce output.
+        _merge_big_board_ranks_for_year(2026)
+        assert not (tmp_path / "draft_picks_with_big_board_ranks_2026.csv").exists()
+
+    def test_skips_when_cleaned_picks_lacks_year(self, tmp_path, monkeypatch):
+        """Verify the merge returns when both files exist but neither covers the year."""
+        monkeypatch.setattr(
+            "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
+        )
+        empty_picks = pl.DataFrame(
+            {
+                "season": [2025],
+                "round": [1],
+                "pick": [1],
+                "team": ["TEN"],
+                "pfr_player_id": ["id0"],
+                "pfr_player_name": ["Cam Ward"],
+                "position": ["QB"],
+                "category": ["O"],
+                "college": ["Miami"],
+            }
+        )
+        empty_picks.write_csv(tmp_path / "cleaned_draft_picks.csv")
+        bb_df = pl.DataFrame(
+            {
+                "Player": ["P1"],
+                "Position": ["QB"],
+                "School": ["S"],
+                "WL": [1],
+                "JLBB": [1],
+                "JL_Avg": [1.0],
+                "JL_SD": [0.0],
+                "JL_Sources": [1],
+                "Consensus": [1.0],
+                "Sources": [1],
+            }
+        )
+        bb_df.write_csv(tmp_path / "combined_big_board_2026.csv")
+        _merge_big_board_ranks_for_year(2026)
+        assert not (tmp_path / "draft_picks_with_big_board_ranks_2026.csv").exists()
+
 
 class TestMain:
     """Tests for main."""

@@ -393,25 +393,51 @@ def _reorder_and_save(
     picks_out.write_csv(output_path)
 
 
+def _load_picks_for_year(year: int) -> pl.DataFrame | None:
+    """Return the cleaned draft picks (with AV when available) filtered to ``year``.
+
+    Prefers ``cleaned_draft_picks_with_av.csv`` so per-season AV columns are merged into the
+    output. Falls back to ``cleaned_draft_picks.csv`` when the AV file is missing or has no rows
+    for the requested year (e.g. a draft that has just concluded but whose first season has not
+    yet been played). Returns ``None`` when neither file has rows for ``year``.
+    """
+    av_path = constants.DATA_PATH / "cleaned_draft_picks_with_av.csv"
+    cleaned_path = constants.DATA_PATH / "cleaned_draft_picks.csv"
+
+    if av_path.exists():
+        av_df = pl.read_csv(av_path).filter(pl.col("season") == year)
+        if not av_df.is_empty():
+            return av_df
+
+    if not cleaned_path.exists():
+        log.error("Draft picks file not found: %s", cleaned_path)
+        return None
+
+    cleaned_df = pl.read_csv(cleaned_path).filter(pl.col("season") == year)
+    if cleaned_df.is_empty():
+        return None
+    log.info("Using cleaned draft picks (no AV) for %s", year)
+    return cleaned_df
+
+
 def _merge_big_board_ranks_for_year(year: int) -> None:
-    """Merge big board ranks into cleaned draft picks with AV for a given year.
+    """Merge big board ranks into cleaned draft picks for a given year.
+
+    AV columns are included when available. When AV data has not yet been scraped for ``year``
+    (e.g. immediately after the draft, before the first season is played), the merge proceeds
+    against ``cleaned_draft_picks.csv`` and the output simply omits the per-season AV columns.
 
     Output a new CSV for the year.
     """
-    picks_path = constants.DATA_PATH / "cleaned_draft_picks_with_av.csv"
     bb_path = constants.DATA_PATH / f"combined_big_board_{year}.csv"
     output_path = constants.DATA_PATH / f"draft_picks_with_big_board_ranks_{year}.csv"
 
-    if not picks_path.exists():
-        log.error("Draft picks file not found: %s", picks_path)
-        return
     if not bb_path.exists():
         log.warning("Big board file not found for %s: %s", year, bb_path)
         return
 
-    picks_df: pl.DataFrame = pl.read_csv(picks_path)
-    picks_year: pl.DataFrame = picks_df.filter(pl.col("season") == year)
-    if picks_year.is_empty():
+    picks_year = _load_picks_for_year(year)
+    if picks_year is None:
         log.info("No draft picks found for %s. Skipping.", year)
         return
 
