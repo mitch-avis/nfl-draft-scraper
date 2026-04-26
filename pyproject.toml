@@ -17,6 +17,7 @@ dependencies = [
     "playwright",
     "polars",
     "Requests",
+    "selenium",
     "sportsipy",
 ]
 classifiers = [
