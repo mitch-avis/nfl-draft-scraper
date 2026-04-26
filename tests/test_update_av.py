@@ -2,33 +2,33 @@
 
 from unittest.mock import patch
 
-import pandas as pd
+import polars as pl
 
 from nfl_draft_scraper.scrape_av import _build_parser, _update_av
+from nfl_draft_scraper.utils.csv_utils import write_df_to_csv
 
 
 class TestUpdateAv:
     """Tests for _update_av."""
 
-    def _setup_draft_csv(self, tmp_path, seasons=None, av_complete=None, teams=None):
-        """Create a minimal cleaned_draft_picks.csv."""
+    def _setup_draft_csv(self, tmp_path, seasons=None, teams=None):
+        """Create a minimal cleaned_draft_picks.csv on disk."""
         if seasons is None:
             seasons = [2024]
         if teams is None:
             teams = ["TST"] * len(seasons)
-        rows = []
-        for i, s in enumerate(seasons):
-            rows.append(
-                {
-                    "pfr_player_id": f"Pid{i:02d}01",
-                    "pfr_player_name": f"Player {i}",
-                    "category": "QB",
-                    "season": s,
-                    "team": teams[i],
-                }
-            )
-        df = pd.DataFrame(rows)
-        df.to_csv(tmp_path / "cleaned_draft_picks.csv", index=True)
+        rows = [
+            {
+                "pfr_player_id": f"Pid{i:02d}01",
+                "pfr_player_name": f"Player {i}",
+                "category": "QB",
+                "season": s,
+                "team": teams[i],
+            }
+            for i, s in enumerate(seasons)
+        ]
+        df = pl.DataFrame(rows)
+        write_df_to_csv(df, tmp_path / "cleaned_draft_picks.csv", index=True)
         return df
 
     @patch("nfl_draft_scraper.scrape_av._calculate_av")
@@ -43,12 +43,13 @@ class TestUpdateAv:
 
         _update_av(checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         assert "2024" in out.columns
-        assert out.iloc[0]["2024"] == 5
-        assert out.iloc[0]["career"] == 5
-        assert out.iloc[0]["draft_team_career"] == 5
-        assert out.iloc[0]["draft_team_weighted_career"] == 5.0
+        row = out.row(0, named=True)
+        assert row["2024"] == 5
+        assert row["career"] == 5
+        assert row["draft_team_career"] == 5
+        assert row["draft_team_weighted_career"] == 5.0
 
     @patch("nfl_draft_scraper.scrape_av._calculate_av")
     def test_handles_failure(self, mock_calc, tmp_path, monkeypatch):
@@ -62,10 +63,11 @@ class TestUpdateAv:
 
         _update_av(checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
-        assert pd.isna(out.iloc[0]["career"])
-        assert pd.isna(out.iloc[0]["draft_team_career"])
-        assert pd.isna(out.iloc[0]["draft_team_weighted_career"])
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        row = out.row(0, named=True)
+        assert row["career"] is None
+        assert row["draft_team_career"] is None
+        assert row["draft_team_weighted_career"] is None
 
     @patch("nfl_draft_scraper.scrape_av._calculate_av")
     def test_processes_all_seasons(self, mock_calc, tmp_path, monkeypatch):
@@ -79,9 +81,10 @@ class TestUpdateAv:
 
         _update_av(checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
-        assert out.iloc[0]["career"] == 10
-        assert out.iloc[0]["draft_team_career"] == 10
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        row = out.row(0, named=True)
+        assert row["career"] == 10
+        assert row["draft_team_career"] == 10
 
     @patch("nfl_draft_scraper.scrape_av._calculate_av")
     def test_force_rescrapes_complete_rows(self, mock_calc, tmp_path, monkeypatch):
@@ -90,8 +93,7 @@ class TestUpdateAv:
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.START_YEAR", 2024)
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.END_YEAR", 2024)
 
-        # Create a checkpoint with one already-complete player
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {
                 "pfr_player_id": ["Pid0001"],
                 "pfr_player_name": ["Player 0"],
@@ -106,19 +108,18 @@ class TestUpdateAv:
                 "av_complete": [True],
             }
         )
-        df.to_csv(tmp_path / "cleaned_draft_picks_with_av_checkpoint.csv", index=False)
-        # Also need the source CSV for _initialize_draft_picks_df
+        df.write_csv(tmp_path / "cleaned_draft_picks_with_av_checkpoint.csv")
         self._setup_draft_csv(tmp_path, [2024], teams=["TST"])
 
-        # Return updated values
         mock_calc.return_value = ({"2024": 9}, 9, 9.0, 9, 9.0)
 
         _update_av(force=True, checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
-        assert out.iloc[0]["2024"] == 9
-        assert out.iloc[0]["career"] == 9
-        assert out.iloc[0]["draft_team_career"] == 9
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        row = out.row(0, named=True)
+        assert row["2024"] == 9
+        assert row["career"] == 9
+        assert row["draft_team_career"] == 9
 
     def test_skips_missing_player_id(self, tmp_path, monkeypatch):
         """Verify skips missing player id."""
@@ -126,7 +127,7 @@ class TestUpdateAv:
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.START_YEAR", 2024)
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.END_YEAR", 2024)
 
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {
                 "pfr_player_id": [""],
                 "pfr_player_name": ["No ID"],
@@ -135,13 +136,14 @@ class TestUpdateAv:
                 "team": ["TST"],
             }
         )
-        df.to_csv(tmp_path / "cleaned_draft_picks.csv", index=True)
+        write_df_to_csv(df, tmp_path / "cleaned_draft_picks.csv", index=True)
 
         _update_av(checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
-        assert pd.isna(out.iloc[0]["career"])
-        assert pd.isna(out.iloc[0]["draft_team_career"])
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        row = out.row(0, named=True)
+        assert row["career"] is None
+        assert row["draft_team_career"] is None
 
     @patch("nfl_draft_scraper.scrape_av._calculate_av")
     def test_checkpoints_regularly(self, mock_calc, tmp_path, monkeypatch):
@@ -150,8 +152,7 @@ class TestUpdateAv:
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.START_YEAR", 2024)
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.END_YEAR", 2024)
 
-        # Create 3 players to trigger checkpoint at every=2
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {
                 "pfr_player_id": ["Pid001", "Pid002", "Pid003"],
                 "pfr_player_name": ["P1", "P2", "P3"],
@@ -160,7 +161,7 @@ class TestUpdateAv:
                 "team": ["TST", "TST", "TST"],
             }
         )
-        df.to_csv(tmp_path / "cleaned_draft_picks.csv", index=True)
+        write_df_to_csv(df, tmp_path / "cleaned_draft_picks.csv", index=True)
         mock_calc.return_value = ({"2024": 1}, 1, 1.0, 1, 1.0)
 
         _update_av(checkpoint_every=2)
@@ -176,15 +177,15 @@ class TestUpdateAv:
         monkeypatch.setattr("nfl_draft_scraper.scrape_av.constants.END_YEAR", 2021)
 
         self._setup_draft_csv(tmp_path, [2020], teams=["DAL"])
-        # Player traded: total career=15, but only 7 on draft team
         mock_calc.return_value = ({"2020": 7, "2021": 8}, 15, 14.6, 7, 7.0)
 
         _update_av(checkpoint_every=100)
 
-        out = pd.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
-        assert out.iloc[0]["career"] == 15
-        assert out.iloc[0]["draft_team_career"] == 7
-        assert out.iloc[0]["draft_team_weighted_career"] == 7.0
+        out = pl.read_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        row = out.row(0, named=True)
+        assert row["career"] == 15
+        assert row["draft_team_career"] == 7
+        assert row["draft_team_weighted_career"] == 7.0
 
 
 class TestBuildParser:

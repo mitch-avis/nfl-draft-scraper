@@ -7,7 +7,7 @@ sorts, and writes the cleaned data.
 
 from __future__ import annotations
 
-import pandas as pd
+import polars as pl
 
 from nfl_draft_scraper import constants
 from nfl_draft_scraper.utils.csv_utils import write_df_to_csv
@@ -32,13 +32,13 @@ _KEEP_COLUMNS = [
 ]
 
 
-def _fetch_raw_draft_picks() -> pd.DataFrame:
+def _fetch_raw_draft_picks() -> pl.DataFrame:
     """Download the raw draft picks CSV from NFLverse and return it as a DataFrame."""
     log.info("Downloading draft picks from %s", NFLVERSE_DRAFT_PICKS_URL)
-    return pd.read_csv(NFLVERSE_DRAFT_PICKS_URL, low_memory=False)
+    return pl.read_csv(NFLVERSE_DRAFT_PICKS_URL, infer_schema_length=10000)
 
 
-def _clean_draft_picks(raw_df: pd.DataFrame, *, start_year: int) -> pd.DataFrame:
+def _clean_draft_picks(raw_df: pl.DataFrame, *, start_year: int) -> pl.DataFrame:
     """Clean a raw draft-picks DataFrame.
 
     - Strip whitespace from column headers
@@ -48,46 +48,64 @@ def _clean_draft_picks(raw_df: pd.DataFrame, *, start_year: int) -> pd.DataFrame
     - Sort by season and pick
     - Compute sequential pick-within-round number
     """
-    raw_df.columns = raw_df.columns.str.strip()
+    # Strip whitespace from column names
+    raw_df = raw_df.rename({c: c.strip() for c in raw_df.columns})
 
     missing = [col for col in _KEEP_COLUMNS if col not in raw_df.columns]
     if missing:
         log.warning("Columns not found in the DataFrame: %s", missing)
 
-    # Cast numeric columns so sorting is numeric, not lexicographic
-    for col in ("season", "round", "pick"):
-        if col in raw_df.columns:
-            raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce")
+    # Cast numeric columns so sorting is numeric, not lexicographic. Strings
+    # may have leading whitespace; cast strict=False yields nulls on failure.
+    numeric_casts = [
+        pl.col(c).cast(pl.Float64, strict=False).alias(c)
+        for c in ("season", "round", "pick")
+        if c in raw_df.columns
+    ]
+    if numeric_casts:
+        raw_df = raw_df.with_columns(numeric_casts)
 
     # Filter to desired year range
     if "season" in raw_df.columns:
-        raw_df = pd.DataFrame(raw_df[raw_df["season"] >= start_year])
+        raw_df = raw_df.filter(pl.col("season") >= start_year)
 
     present = [c for c in _KEEP_COLUMNS if c in raw_df.columns]
-    result = raw_df.loc[:, present].copy()
+    result = raw_df.select(present)
     log.info("Filtered columns: %s", list(result.columns))
 
     # Normalise historical team abbreviations to current values
     if "team" in result.columns:
-        result["team"] = result["team"].map(constants.normalize_team)
+        result = result.with_columns(
+            pl.col("team")
+            .map_elements(constants.normalize_team, return_dtype=pl.String)
+            .alias("team"),
+        )
 
-    # Cast to int after filtering (NaN rows from coerce would have been dropped)
-    for col in ("season", "round", "pick"):
-        if col in result.columns:
-            result[col] = result[col].astype(int)
+    # Cast to int after filtering (nulls from coerce would have been dropped via filter)
+    int_casts = [
+        pl.col(c).cast(pl.Int64).alias(c)
+        for c in ("season", "round", "pick")
+        if c in result.columns
+    ]
+    if int_casts:
+        result = result.with_columns(int_casts)
 
-    result = result.sort_values(by=["season", "pick"]).reset_index(drop=True)
+    if "pick" in result.columns and "season" in result.columns:
+        result = result.sort(["season", "pick"])
     log.info("Sorted draft picks by season and pick.")
 
     # Compute pick-within-round: sequential number within each (season, round)
-    if "round" in result.columns:
-        result["round_pick"] = result.groupby(["season", "round"]).cumcount() + 1
-        # Place round_pick right after round and before pick
+    if "round" in result.columns and "season" in result.columns:
+        result = result.with_columns(
+            (pl.col("round").cum_count().over(["season", "round"]))
+            .cast(pl.Int64)
+            .alias("round_pick"),
+        )
         cols = list(result.columns)
         cols.remove("round_pick")
         round_idx = cols.index("round")
         cols.insert(round_idx + 1, "round_pick")
-        result = result[cols]
+        result = result.select(cols)
 
     return result
 
@@ -98,15 +116,11 @@ def main() -> None:
 
     # Persist the raw download so it is available for inspection
     raw_path = constants.DATA_PATH / "draft_picks.csv"
-    raw_df.to_csv(raw_path, index=False)
-    log.info("Saved raw draft picks to %s (%d rows)", raw_path, len(raw_df))
+    raw_df.write_csv(raw_path)
+    log.info("Saved raw draft picks to %s (%d rows)", raw_path, raw_df.height)
 
     result = _clean_draft_picks(raw_df, start_year=constants.START_YEAR)
 
     out_file = constants.DATA_PATH / "cleaned_draft_picks.csv"
     write_df_to_csv(result, out_file, index=True)
-    log.info("Saved cleaned draft picks to %s (%d rows)", out_file, len(result))
-
-
-if __name__ == "__main__":
-    main()
+    log.info("Saved cleaned draft picks to %s (%d rows)", out_file, result.height)

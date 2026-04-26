@@ -13,7 +13,6 @@ authors = [{ name = "Mitch Avis", email = "mitchavis@gmail.com" }]
 license = { text = "MIT" }
 dependencies = [
     "numpy",
-    "pandas",
     "playwright",
     "polars",
     "Requests",

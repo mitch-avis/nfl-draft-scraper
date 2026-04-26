@@ -1,6 +1,6 @@
 """Tests for nfl_draft_scraper.merge_bb_ranks_to_picks — integration tests."""
 
-import pandas as pd
+import polars as pl
 
 from nfl_draft_scraper.merge_bb_ranks_to_picks import (
     _merge_big_board_ranks_for_year,
@@ -14,7 +14,7 @@ class TestReorderAndSave:
 
     def test_reorders_and_renames(self, tmp_path):
         """Verify reorders and renames."""
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {
                 "round": [1],
                 "round_pick": [1],
@@ -39,7 +39,7 @@ class TestReorderAndSave:
         )
         path = tmp_path / "output.csv"
         _reorder_and_save(df, path, ["2021", "career", "weighted_career"])
-        result = pd.read_csv(path)
+        result = pl.read_csv(path)
         assert "player" in result.columns
         assert "overall_pick" in result.columns
         assert "pfr_player_name" not in result.columns
@@ -61,7 +61,7 @@ class TestMergeBigBoardRanksForYear:
             "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
 
-        picks_df = pd.DataFrame(
+        picks_df = pl.DataFrame(
             {
                 "season": [2020, 2020],
                 "round": [1, 2],
@@ -77,9 +77,9 @@ class TestMergeBigBoardRanksForYear:
                 "weighted_career": [5.0, 2.0],
             }
         )
-        picks_df.to_csv(tmp_path / "cleaned_draft_picks_with_av.csv", index=False)
+        picks_df.write_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
 
-        bb_df = pd.DataFrame(
+        bb_df = pl.DataFrame(
             {
                 "Player": ["Joe Burrow", "Tee Higgins"],
                 "Position": ["QB", "WR"],
@@ -93,13 +93,13 @@ class TestMergeBigBoardRanksForYear:
                 "Sources": [16, 14],
             }
         )
-        bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
+        bb_df.write_csv(tmp_path / "combined_big_board_2020.csv")
 
         _merge_big_board_ranks_for_year(2020)
 
         output = tmp_path / "draft_picks_with_big_board_ranks_2020.csv"
         assert output.exists()
-        result = pd.read_csv(output)
+        result = pl.read_csv(output)
         assert "MDDB Rank" in result.columns
         assert "JLBB Rank" in result.columns
         assert "Consensus" in result.columns
@@ -108,7 +108,7 @@ class TestMergeBigBoardRanksForYear:
         assert "JL_Sources" in result.columns
         assert "Sources" in result.columns
         assert "AvgRank" not in result.columns
-        assert len(result) == 2
+        assert result.height == 2
 
     def test_skips_missing_picks_file(self, tmp_path, monkeypatch):
         """Verify skips missing picks file."""
@@ -123,7 +123,7 @@ class TestMergeBigBoardRanksForYear:
         monkeypatch.setattr(
             "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
-        picks_df = pd.DataFrame(
+        picks_df = pl.DataFrame(
             {
                 "season": [2020],
                 "round": [1],
@@ -136,7 +136,7 @@ class TestMergeBigBoardRanksForYear:
                 "college": ["LSU"],
             }
         )
-        picks_df.to_csv(tmp_path / "cleaned_draft_picks_with_av.csv", index=False)
+        picks_df.write_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
         # No big board file — should not raise
         _merge_big_board_ranks_for_year(2020)
 
@@ -145,7 +145,7 @@ class TestMergeBigBoardRanksForYear:
         monkeypatch.setattr(
             "nfl_draft_scraper.merge_bb_ranks_to_picks.constants.DATA_PATH", tmp_path
         )
-        picks_df = pd.DataFrame(
+        picks_df = pl.DataFrame(
             {
                 "season": [2019],
                 "round": [1],
@@ -158,8 +158,8 @@ class TestMergeBigBoardRanksForYear:
                 "college": ["Oklahoma"],
             }
         )
-        picks_df.to_csv(tmp_path / "cleaned_draft_picks_with_av.csv", index=False)
-        bb_df = pd.DataFrame(
+        picks_df.write_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        bb_df = pl.DataFrame(
             {
                 "Player": ["P1"],
                 "Position": ["QB"],
@@ -173,7 +173,7 @@ class TestMergeBigBoardRanksForYear:
                 "Sources": [16],
             }
         )
-        bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
+        bb_df.write_csv(tmp_path / "combined_big_board_2020.csv")
         # Year 2020 has no picks — should not raise
         _merge_big_board_ranks_for_year(2020)
 
@@ -189,7 +189,7 @@ class TestMain:
         monkeypatch.setattr("nfl_draft_scraper.merge_bb_ranks_to_picks.constants.START_YEAR", 2020)
         monkeypatch.setattr("nfl_draft_scraper.merge_bb_ranks_to_picks.constants.END_YEAR", 2020)
 
-        picks_df = pd.DataFrame(
+        picks_df = pl.DataFrame(
             {
                 "season": [2020],
                 "round": [1],
@@ -205,8 +205,8 @@ class TestMain:
                 "weighted_career": [5.0],
             }
         )
-        picks_df.to_csv(tmp_path / "cleaned_draft_picks_with_av.csv", index=False)
-        bb_df = pd.DataFrame(
+        picks_df.write_csv(tmp_path / "cleaned_draft_picks_with_av.csv")
+        bb_df = pl.DataFrame(
             {
                 "Player": ["Joe Burrow"],
                 "Position": ["QB"],
@@ -220,7 +220,7 @@ class TestMain:
                 "Sources": [16],
             }
         )
-        bb_df.to_csv(tmp_path / "combined_big_board_2020.csv", index=False)
+        bb_df.write_csv(tmp_path / "combined_big_board_2020.csv")
 
         main()
 

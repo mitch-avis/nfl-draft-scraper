@@ -9,12 +9,10 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import typing
+from typing import Any
 
 os.environ["SPORTSIPY_CHROME_COOKIES"] = "1"
 
-import numpy as np
-import pandas as pd
 import polars as pl
 from sportsipy.nfl.constants import PLAYER_SCHEME
 from sportsipy.nfl.roster import Player
@@ -44,14 +42,13 @@ FRANCHISE_EQUIVALENTS: dict[str, frozenset[str]] = {
     "LAR": frozenset({"STL", "LAR"}),
 }
 
-
-def _get_at_index(df: pd.DataFrame, idx: typing.Hashable) -> int | str:
-    """Return the correct index for .at[]: tuple for MultiIndex, scalar for Index."""
-    if isinstance(df.index, pd.MultiIndex):
-        return typing.cast(int | str, idx)
-    if isinstance(idx, tuple):
-        return typing.cast(int | str, idx[0])
-    return typing.cast(int | str, idx)
+# AV summary columns that are always present alongside the per-year columns.
+_AV_SUMMARY_COLUMNS: list[str] = [
+    "career",
+    "weighted_career",
+    "draft_team_career",
+    "draft_team_weighted_career",
+]
 
 
 def _clean_stats_df(stats_df: pl.DataFrame) -> pl.DataFrame:
@@ -133,49 +130,55 @@ def _calculate_av(
     return av_by_year, career_av, weighted_career_av, dt_career_av, dt_weighted_career_av
 
 
-def _handle_av_error(draft_df: pd.DataFrame, idx: typing.Hashable, av_columns: list[str]) -> None:
-    """Mark AV columns as NaN and flag the row as incomplete in case of an error."""
-    # If idx is a tuple, extract the first non-str element as the row index
-    # Ensure row is a scalar (int or str), not a tuple or other type
-    row = _get_at_index(draft_df, idx)
+def _handle_av_error(rows: list[dict[str, Any]], idx: int, av_columns: list[str]) -> None:
+    """Mark AV columns as null and flag the row as incomplete in case of an error."""
+    row = rows[idx]
     for col in av_columns:
-        draft_df.at[row, col] = np.nan
-    draft_df.at[row, "career"] = np.nan
-    draft_df.at[row, "weighted_career"] = np.nan
-    draft_df.at[row, "draft_team_career"] = np.nan
-    draft_df.at[row, "draft_team_weighted_career"] = np.nan
-    draft_df.at[row, "av_complete"] = False
+        row[col] = None
+    for col in _AV_SUMMARY_COLUMNS:
+        row[col] = None
+    row["av_complete"] = False
 
 
-def _save_checkpoint(draft_df: pd.DataFrame, checkpoint_path: str) -> None:
-    """Save a CSV checkpoint of the draft dataframe with AV progress."""
-    draft_df.to_csv(checkpoint_path, index=False)
-    log.info(
-        "💾 Checkpoint saved at %s (%d complete)", checkpoint_path, draft_df["av_complete"].sum()
-    )
+def _save_checkpoint(rows: list[dict[str, Any]], checkpoint_path: str) -> None:
+    """Save a CSV checkpoint of the draft rows with AV progress."""
+    pl.DataFrame(rows).write_csv(checkpoint_path)
+    complete = sum(1 for r in rows if r.get("av_complete"))
+    log.info("💾 Checkpoint saved at %s (%d complete)", checkpoint_path, complete)
 
 
 def _initialize_draft_picks_df(
     draft_path: str, checkpoint_path: str, av_columns: list[str]
-) -> pd.DataFrame:
-    """Load or initialize the draft picks dataframe, adding AV columns if needed."""
+) -> list[dict[str, Any]]:
+    """Load or initialize the draft picks rows, adding AV columns if needed.
+
+    Returns a list of row dicts keyed by column name. This list is the working
+    set that the AV update loop mutates as it processes each player.
+    """
     if os.path.exists(checkpoint_path):
         log.info("🔄 Resuming Phase 1 from checkpoint: %s", checkpoint_path)
-        df = pd.read_csv(checkpoint_path)
+        df = pl.read_csv(checkpoint_path)
+        rows = df.to_dicts()
         if "av_complete" not in df.columns:
-            df["av_complete"] = False
+            for row in rows:
+                row["av_complete"] = False
     else:
         df = read_df_from_csv(draft_path)
-        # add the AV columns
-        for col in av_columns + [
-            "career",
-            "weighted_career",
-            "draft_team_career",
-            "draft_team_weighted_career",
-        ]:
-            df[col] = np.nan
-        df["av_complete"] = False
-    return df
+        rows = df.to_dicts()
+        extra_cols = [*av_columns, *_AV_SUMMARY_COLUMNS]
+        for row in rows:
+            for col in extra_cols:
+                row[col] = None
+            row["av_complete"] = False
+    return rows
+
+
+def _is_missing_player_id(pid: Any) -> bool:
+    """Return True when the player id is missing (None, empty, or whitespace)."""
+    if pid is None:
+        return True
+    text = str(pid).strip()
+    return text == "" or text.lower() == "nan"
 
 
 def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
@@ -192,10 +195,10 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
     all_years = list(range(constants.START_YEAR, constants.END_YEAR + 1))
     av_cols = [str(y) for y in all_years]
 
-    df = _initialize_draft_picks_df(draft_path, checkpoint_path, av_cols)
+    rows = _initialize_draft_picks_df(draft_path, checkpoint_path, av_cols)
 
     processed = 0
-    for idx, row_data in df.iterrows():
+    for idx, row_data in enumerate(rows):
         av_complete = bool(row_data.get("av_complete", False))
 
         # Skip already-complete rows unless force mode is enabled
@@ -205,24 +208,23 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
         pid = row_data.get("pfr_player_id")
         name = row_data.get("pfr_player_name")
 
-        if pid is None or (isinstance(pid, float) and pd.isna(pid)) or str(pid).strip() == "":
-            _handle_av_error(df, idx, av_cols)
+        if _is_missing_player_id(pid):
+            _handle_av_error(rows, idx, av_cols)
             log.warning("⚠️  Missing pfr_player_id for %s; leaving incomplete", name)
             continue
 
-        draft_team = str(row_data.get("team", ""))
-        row = _get_at_index(df, idx)
+        draft_team = str(row_data.get("team", "") or "")
         try:
             av_by_year, career_av, w_av, dt_career, dt_w = _calculate_av(
                 str(pid), all_years, draft_team
             )
             for col in av_cols:
-                df.at[row, col] = av_by_year[col]
-            df.at[row, "career"] = career_av
-            df.at[row, "weighted_career"] = w_av
-            df.at[row, "draft_team_career"] = dt_career
-            df.at[row, "draft_team_weighted_career"] = dt_w
-            df.at[row, "av_complete"] = True
+                row_data[col] = av_by_year[col]
+            row_data["career"] = career_av
+            row_data["weighted_career"] = w_av
+            row_data["draft_team_career"] = dt_career
+            row_data["draft_team_weighted_career"] = dt_w
+            row_data["av_complete"] = True
             log.info(
                 "✔️  AV via sportsipy: %s (%s) career=%s weighted=%s dt_career=%s dt_weighted=%s",
                 name,
@@ -234,17 +236,17 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
             )
         except (ValueError, KeyError, AttributeError) as e:
             log.warning("⚠️  sportsipy error for %s (%s): %s", name, pid, e)
-            _handle_av_error(df, idx, av_cols)
+            _handle_av_error(rows, idx, av_cols)
 
         processed += 1
         if processed % checkpoint_every == 0:
-            _save_checkpoint(df, checkpoint_path)
+            _save_checkpoint(rows, checkpoint_path)
 
     # final write & cleanup
-    df.to_csv(checkpoint_path, index=False)
+    final_df = pl.DataFrame(rows)
+    final_df.write_csv(checkpoint_path)
     log.info("💾 Final checkpoint saved to %s", checkpoint_path)
-    final = df.drop(columns=["av_complete"])
-    final.to_csv(out_path, index=False)
+    final_df.drop("av_complete").write_csv(out_path)
     log.info("✔️  AV update done, wrote %s", out_path)
 
 

@@ -1,6 +1,6 @@
 """Tests for nfl_draft_scraper.merge_bb_ranks_to_picks."""
 
-import pandas as pd
+import polars as pl
 
 from nfl_draft_scraper.merge_bb_ranks_to_picks import (
     _PLAYER_NAME_ALIASES,
@@ -528,7 +528,7 @@ class TestGetAvColumns:
 
     def test_returns_matching_columns(self):
         """Verify returns matching columns."""
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {"2020": [1], "2021": [2], "career": [3], "weighted_career": [4], "other": [5]}
         )
         result = _get_av_columns(df)
@@ -540,7 +540,7 @@ class TestGetAvColumns:
 
     def test_returns_empty_for_no_matches(self):
         """Verify returns empty for no matches."""
-        df = pd.DataFrame({"col_a": [1], "col_b": [2]})
+        df = pl.DataFrame({"col_a": [1], "col_b": [2]})
         result = _get_av_columns(df)
         assert result == []
 
@@ -550,7 +550,7 @@ class TestGetRankLists:
 
     def test_matches_player(self):
         """Verify matches player."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Alice"],
                 "pfr_player_name_clean": ["alice"],
@@ -582,7 +582,7 @@ class TestGetRankLists:
 
     def test_no_match(self):
         """Verify no match."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Zzzz"],
                 "pfr_player_name_clean": ["zzzz"],
@@ -614,7 +614,7 @@ class TestGetRankLists:
 
     def test_multiple_players(self):
         """Verify multiple players."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Alice", "Bob"],
                 "pfr_player_name_clean": ["alice", "bob"],
@@ -651,7 +651,7 @@ class TestGetRankLists:
 
     def test_rejects_match_with_incompatible_position_and_school(self):
         """Verify fuzzy match is rejected when both position and school disagree."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Micah Robinson"],
                 "pfr_player_name_clean": ["micah robinson"],
@@ -679,7 +679,7 @@ class TestGetRankLists:
 
     def test_uses_alias_for_boogie_basham(self):
         """Verify Boogie Basham matches Carlos Basham Jr. via alias lookup."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Boogie Basham"],
                 "pfr_player_name_clean": ["boogie basham"],
@@ -707,7 +707,7 @@ class TestGetRankLists:
 
     def test_uses_alias_for_quan_martin(self):
         """Verify Quan Martin matches Jartavius Martin via alias lookup."""
-        picks = pd.DataFrame(
+        picks = pl.DataFrame(
             {
                 "pfr_player_name": ["Quan Martin"],
                 "pfr_player_name_clean": ["quan martin"],

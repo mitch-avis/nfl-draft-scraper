@@ -1,8 +1,5 @@
 """Tests for nfl_draft_scraper.scrape_av."""
 
-import typing
-
-import pandas as pd
 import polars as pl
 
 from nfl_draft_scraper.scrape_av import (
@@ -10,32 +7,10 @@ from nfl_draft_scraper.scrape_av import (
     _calculate_career_av,
     _calculate_weighted_career_av,
     _clean_stats_df,
-    _get_at_index,
     _get_av_by_year,
     _get_draft_team_av_by_year,
     _handle_av_error,
 )
-
-
-class TestGetAtIndex:
-    """Tests for _get_at_index."""
-
-    def test_scalar_index(self):
-        """Verify scalar index."""
-        df = pd.DataFrame({"a": [1, 2]})
-        assert _get_at_index(df, 0) == 0
-
-    def test_tuple_index_non_multi(self):
-        """Verify tuple index non multi."""
-        df = pd.DataFrame({"a": [1, 2]})
-        assert _get_at_index(df, (0,)) == 0
-
-    def test_multi_index(self):
-        """Verify multi index."""
-        df = pd.DataFrame({"a": [1, 2], "b": [3, 4]}).set_index(["a", "b"])
-        idx = typing.cast(typing.Hashable, df.index[0])
-        result = _get_at_index(df, idx)
-        assert result == idx
 
 
 class TestCleanStatsDf:
@@ -141,26 +116,26 @@ class TestHandleAvError:
     """Tests for _handle_av_error."""
 
     def test_marks_columns_nan(self):
-        """Verify marks columns nan."""
-        df = pd.DataFrame(
+        """Verify all AV-related columns are set to None and av_complete to False."""
+        rows = [
             {
-                "2020": [5],
-                "2021": [3],
-                "career": [8],
-                "weighted_career": [7.0],
-                "draft_team_career": [6],
-                "draft_team_weighted_career": [5.5],
-                "av_complete": [True],
+                "2020": 5,
+                "2021": 3,
+                "career": 8,
+                "weighted_career": 7.0,
+                "draft_team_career": 6,
+                "draft_team_weighted_career": 5.5,
+                "av_complete": True,
             }
-        )
-        _handle_av_error(df, 0, ["2020", "2021"])
-        assert pd.isna(df.at[0, "2020"])
-        assert pd.isna(df.at[0, "2021"])
-        assert pd.isna(df.at[0, "career"])
-        assert pd.isna(df.at[0, "weighted_career"])
-        assert pd.isna(df.at[0, "draft_team_career"])
-        assert pd.isna(df.at[0, "draft_team_weighted_career"])
-        assert not df.at[0, "av_complete"]
+        ]
+        _handle_av_error(rows, 0, ["2020", "2021"])
+        assert rows[0]["2020"] is None
+        assert rows[0]["2021"] is None
+        assert rows[0]["career"] is None
+        assert rows[0]["weighted_career"] is None
+        assert rows[0]["draft_team_career"] is None
+        assert rows[0]["draft_team_weighted_career"] is None
+        assert rows[0]["av_complete"] is False
 
 
 class TestFranchiseEquivalents:

@@ -11,11 +11,10 @@ Output: draft_picks_with_big_board_ranks_<year>.csv for each year.
 from __future__ import annotations
 
 import difflib
-import typing
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+import polars as pl
 
 from nfl_draft_scraper import constants
 from nfl_draft_scraper.utils.logger import log
@@ -279,7 +278,7 @@ _BB_COL_RENAME: dict[str, str] = {
 
 
 def _get_rank_lists(
-    picks_year: pd.DataFrame,
+    picks_year: pl.DataFrame,
     bb_lookup: dict[str, dict[str, Any]],
     bb_names: list[str],
     bb_positions: dict[str, str] | None = None,
@@ -294,10 +293,10 @@ def _get_rank_lists(
         _BB_COL_RENAME.get(col, col): [] for col in _BB_RANK_COLUMNS
     }
 
-    for _, row in picks_year.iterrows():
-        player_clean: str = typing.cast(str, row["pfr_player_name_clean"])
-        pick_position: str = str(row.get("position", ""))
-        pick_school: str = str(row.get("college", ""))
+    for row in picks_year.iter_rows(named=True):
+        player_clean: str = str(row["pfr_player_name_clean"])
+        pick_position: str = str(row.get("position", "") or "")
+        pick_school: str = str(row.get("college", "") or "")
         match: str | None = _fuzzy_match_player(
             player_clean,
             bb_names,
@@ -334,10 +333,16 @@ def _get_rank_lists(
     return result
 
 
-def _get_av_columns(df: pd.DataFrame) -> list[str]:
-    """Return the list of AV columns present in the DataFrame."""
-    av_years: list[str] = [str(y) for y in range(constants.START_YEAR, constants.END_YEAR + 1)]
-    av_cols: list[str] = av_years + [
+def _get_av_columns(df: pl.DataFrame) -> list[str]:
+    """Return the list of AV columns present in the DataFrame.
+
+    AV columns are any 4-digit year columns (per-season AV) plus the fixed set of
+    aggregate AV columns. Year columns are detected from the DataFrame itself rather
+    than the pipeline year range, since AV data may span earlier seasons than the
+    current scraping window.
+    """
+    year_cols: list[str] = sorted(col for col in df.columns if len(col) == 4 and col.isdigit())
+    aggregate_cols: list[str] = [
         "career",
         "weighted_career",
         "draft_team_career",
@@ -345,11 +350,11 @@ def _get_av_columns(df: pd.DataFrame) -> list[str]:
         "w_av",
         "dr_av",
     ]
-    return [col for col in av_cols if col in df.columns]
+    return year_cols + [col for col in aggregate_cols if col in df.columns]
 
 
 def _reorder_and_save(
-    picks_year: pd.DataFrame,
+    picks_year: pl.DataFrame,
     output_path: Path,
     av_cols: list[str],
 ) -> None:
@@ -377,15 +382,14 @@ def _reorder_and_save(
     ordered_cols: list[str] = base_cols + rank_cols + av_cols
     # Only include columns actually present
     ordered_cols = [c for c in ordered_cols if c in picks_year.columns]
-    picks_out = picks_year[ordered_cols].copy()
-    # Rename for final output
-    picks_out.columns = pd.Index(
-        [
-            "player" if c == "pfr_player_name" else "overall_pick" if c == "pick" else c
-            for c in picks_out.columns
-        ]
+    rename_map: dict[str, str] = {
+        "pfr_player_name": "player",
+        "pick": "overall_pick",
+    }
+    picks_out = picks_year.select(ordered_cols).rename(
+        {k: v for k, v in rename_map.items() if k in ordered_cols}
     )
-    picks_out.to_csv(output_path, index=False)
+    picks_out.write_csv(output_path)
 
 
 def _merge_big_board_ranks_for_year(year: int) -> None:
@@ -404,53 +408,57 @@ def _merge_big_board_ranks_for_year(year: int) -> None:
         log.warning("Big board file not found for %s: %s", year, bb_path)
         return
 
-    picks_df: pd.DataFrame = pd.read_csv(picks_path)
-    picks_year: pd.DataFrame = typing.cast(
-        pd.DataFrame, picks_df[picks_df["season"] == year].copy()
-    )
-    if picks_year.empty:
+    picks_df: pl.DataFrame = pl.read_csv(picks_path)
+    picks_year: pl.DataFrame = picks_df.filter(pl.col("season") == year)
+    if picks_year.is_empty():
         log.info("No draft picks found for %s. Skipping.", year)
         return
 
-    bb_df: pd.DataFrame = pd.read_csv(bb_path)
-    picks_year["pfr_player_name_clean"] = picks_year["pfr_player_name"].str.strip().str.lower()
-    bb_df["Player_clean"] = bb_df["Player"].str.strip().str.lower()
+    bb_df: pl.DataFrame = pl.read_csv(bb_path)
+    picks_year = picks_year.with_columns(
+        pl.col("pfr_player_name")
+        .str.strip_chars()
+        .str.to_lowercase()
+        .alias("pfr_player_name_clean"),
+    )
+    bb_df = bb_df.with_columns(
+        pl.col("Player").str.strip_chars().str.to_lowercase().alias("Player_clean"),
+    )
 
-    # remove duplicate big board entries so index is unique
-    dupes_mask = bb_df["Player_clean"].duplicated()
-    dupes = bb_df.loc[dupes_mask, "Player_clean"]
-    if not dupes.empty:
-        log.warning("Duplicate big board player names for %s: %s", year, list(dupes.unique()))
-    bb_df = bb_df.drop_duplicates(subset="Player_clean", keep="first")
+    # Identify duplicate big board entries so we can warn before dropping them.
+    dupes = bb_df.filter(pl.col("Player_clean").is_duplicated())["Player_clean"].unique().to_list()
+    if dupes:
+        log.warning("Duplicate big board player names for %s: %s", year, dupes)
+    bb_df = bb_df.unique(subset=["Player_clean"], keep="first", maintain_order=True)
 
     # Build per-player lookup from combined big board columns
     bb_cols_present = [c for c in _BB_RANK_COLUMNS if c in bb_df.columns]
-    indexed_df = bb_df.set_index("Player_clean")[bb_cols_present]
     bb_lookup: dict[str, dict[str, Any]] = {
-        str(idx): {str(k): v for k, v in row.to_dict().items()}
-        for idx, row in indexed_df.iterrows()
+        str(row["Player_clean"]): {col: row[col] for col in bb_cols_present}
+        for row in bb_df.select(["Player_clean", *bb_cols_present]).iter_rows(named=True)
     }
     bb_names: list[str] = list(bb_lookup.keys())
 
     # Build position and school lookups for enhanced fuzzy matching
     bb_positions: dict[str, str] = dict(
         zip(
-            bb_df["Player_clean"].astype(str),
-            bb_df["Position"].fillna("").astype(str),
+            bb_df["Player_clean"].cast(pl.String).to_list(),
+            bb_df["Position"].fill_null("").cast(pl.String).to_list(),
             strict=False,
         )
     )
     bb_schools: dict[str, str] = dict(
         zip(
-            bb_df["Player_clean"].astype(str),
-            bb_df["School"].fillna("").astype(str),
+            bb_df["Player_clean"].cast(pl.String).to_list(),
+            bb_df["School"].fill_null("").cast(pl.String).to_list(),
             strict=False,
         )
     )
 
     rank_data = _get_rank_lists(picks_year, bb_lookup, bb_names, bb_positions, bb_schools)
-    for col_name, values in rank_data.items():
-        picks_year[col_name] = values
+    picks_year = picks_year.with_columns(
+        [pl.Series(name=col_name, values=values) for col_name, values in rank_data.items()],
+    )
 
     av_cols: list[str] = _get_av_columns(picks_year)
     _reorder_and_save(picks_year, output_path, av_cols)
