@@ -1,15 +1,13 @@
 """Jacklich10 Big Board Scraper.
 
-Uses Playwright to scrape the consensus big board from jacklich10.com,
-which is an R Shiny app that loads data dynamically via WebSocket.
+Uses Playwright to scrape the consensus big board from jacklich10.com, which is an R Shiny app that
+loads data dynamically via WebSocket.
 
-The Shiny app delivers the full reactable dataset in a single SockJS
-WebSocket frame, so there is no need for DOM pagination.  This module
-captures the WebSocket traffic, extracts the columnar JSON payload,
-and converts it to row-based records.
+The Shiny app delivers the full reactable dataset in a single SockJS WebSocket frame, so there is no
+need for DOM pagination.  This module captures the WebSocket traffic, extracts the columnar JSON
+payload, and converts it to row-based records.
 
-No external browser drivers (geckodriver) are required — Playwright
-bundles its own Chromium.
+No external browser drivers (geckodriver) are required — Playwright bundles its own Chromium.
 """
 
 from __future__ import annotations
@@ -35,8 +33,8 @@ _TABLE_SELECTOR = ".rt-table"
 # Minimum frame length to consider (the data frame is typically > 100 KB)
 _MIN_FRAME_LEN = 1000
 
-# Regex to extract text from <span> or unclosed <span> inside <div> blocks.
-# The site uses patterns like:
+# Regex to extract text from <span> or unclosed <span> inside <div> blocks. The site uses patterns
+# like:
 #   <div ...><span ...>Text</span></div>   (with closing tag)
 #   <div ...><span ...>Text</div>          (without closing </span>)
 _SPAN_TEXT_RE = re.compile(r"<span[^>]*>([^<]+)")
@@ -51,8 +49,8 @@ _WIDGET_SCRIPT_RE = re.compile(
 def _parse_name_html(html: str) -> str:
     """Extract 'First Last' from the player_name column HTML.
 
-    The HTML contains two ``<div>`` blocks, each with a ``<span>`` holding
-    first name and last name respectively.
+    The HTML contains two ``<div>`` blocks, each with a ``<span>`` holding first name and last name
+    respectively.
     """
     if not html:
         return ""
@@ -76,9 +74,8 @@ def _parse_position_html(html: str) -> str:
 def _extract_widget_data(shiny_html: str) -> dict[str, list[Any]]:
     """Extract the columnar data dict from a Shiny HTML output string.
 
-    The Shiny app embeds a ``<script type="application/json">`` tag inside the
-    rendered reactable widget.  The JSON lives at
-    ``x.tag.attribs.data`` within the parsed object.
+    The Shiny app embeds a ``<script type="application/json">`` tag inside the rendered reactable
+    widget.  The JSON lives at ``x.tag.attribs.data`` within the parsed object.
 
     Raises
     ------
@@ -133,8 +130,8 @@ def _parse_shiny_message(raw_frame: str) -> dict[str, Any]:
     raise ValueError(msg)
 
 
-# Columns that are either rendered as HTML (parsed separately) or are image URLs
-# we do not want in the final CSV output.
+# Columns that are either rendered as HTML (parsed separately) or are image URLs we do not want in
+# the final CSV output.
 _SKIP_COLUMNS = frozenset({"team_logo_espn", "player_image", "combo", "player_name"})
 
 # Columns with well-known names that get special handling (rename or parse).
@@ -144,9 +141,9 @@ _STRUCTURAL_COLUMNS = frozenset({"rank", "school", "conference", "sd_rk", "avg_r
 def _columnar_to_records(data: dict[str, list[Any]]) -> list[dict[str, str]]:
     """Convert columnar widget data to a list of record dicts.
 
-    Each record contains fixed keys (``rank``, ``name``, ``pos``, ``school``,
-    optionally ``conference``, ``avg``, ``sd``) followed by any source-site rank
-    columns present in the data (sorted alphabetically).
+    Each record contains fixed keys (``rank``, ``name``, ``pos``, ``school``, optionally
+    ``conference``, ``avg``, ``sd``) followed by any source-site rank columns present in the data
+    (sorted alphabetically).
     """
     ranks = data.get("rank", [])
     names = data.get("player_name", [])
@@ -211,10 +208,9 @@ def _verify_year(page: Page, expected_year: int) -> None:
 def fetch_and_parse(page: Page, year: int) -> list[dict[str, str]]:
     """Fetch and parse the big board data for a given year.
 
-    Navigates to the JLBB site, selects the requested year, and captures
-    the full dataset from the WebSocket payload.  The initial page load
-    delivers the default (latest) year's data; those frames are discarded
-    before the year selection so only the requested year's data is kept.
+    Navigates to the JLBB site, selects the requested year, and captures the full dataset from the
+    WebSocket payload.  The initial page load delivers the default (latest) year's data; those
+    frames are discarded before the year selection so only the requested year's data is kept.
     """
     log.debug("fetch_and_parse: starting for year %d", year)
     ws_frames: list[str] = []

@@ -413,8 +413,8 @@ class TestParseShinyMessageBranches:
     def test_raises_on_malformed_json(self) -> None:
         """Verify ValueError when the SockJS array contains invalid JSON."""
         frame = 'a["not valid json at all"]'
-        # The inner message won't parse as valid |m| JSON but the array itself
-        # parses fine — however "not valid json at all" has no |m| separator,
+        # The inner message won't parse as valid |m| JSON but the array itself parses fine — however
+        # "not valid json at all" has no |m| separator,
         # so it falls through to the "bb_table not found" error.
         with pytest.raises(ValueError, match="bb_table"):
             _parse_shiny_message(frame)
@@ -443,8 +443,8 @@ class TestParseShinyMessageBranches:
 def _make_sockjs_frame(year_label: str, player_count: int = 2) -> str:
     """Build a realistic SockJS WebSocket frame for testing fetch_and_parse.
 
-    Returns a frame whose payload contains player_count rows labelled with
-    year_label in the school field (so tests can verify which frame was used).
+    Returns a frame whose payload contains player_count rows labelled with year_label in the school
+    field (so tests can verify which frame was used).
     """
     names = [
         FIRST_NAME_HTML.replace("Arvell", f"Player{i}").replace("Reese", f"Y{year_label}")
@@ -532,8 +532,8 @@ class TestFetchAndParse:
         self._setup_page(page, [year_frame])
         page.input_value.return_value = "2020"
 
-        # Simulate an initial-load frame that was captured before year selection.
-        # In the real code, ws_frames.clear() after initial load should discard this.
+        # Simulate an initial-load frame that was captured before year selection. In the real code,
+        # ws_frames.clear() after initial load should discard this.
         records = fetch_and_parse(page, 2020)
 
         # Should get 2020 data, not default data

@@ -1,8 +1,7 @@
 """Mock Draft Database Big Board Scraper.
 
-Fetches the consensus big board for each draft year by extracting the JSON
-data embedded in the page's React component props, avoiding brittle HTML/XPath
-parsing entirely.
+Fetches the consensus big board for each draft year by extracting the JSON data embedded in the
+page's React component props, avoiding brittle HTML/XPath parsing entirely.
 """
 
 from __future__ import annotations
@@ -65,10 +64,9 @@ def _verify_year(page_html: str, expected_year: int) -> None:
 def parse_big_board(page: str) -> list[dict[str, str]]:
     """Extract player data from the React props JSON embedded in the HTML.
 
-    The MDDB page ships all big-board data inside a ``data-react-props`` attribute
-    on a ``<div>`` element. The JSON structure contains a ``mock.selections`` list
-    where each entry has ``pick``, ``player.name``, ``player.position``, and
-    ``player.college.name``.
+    The MDDB page ships all big-board data inside a ``data-react-props`` attribute on a ``<div>``
+    element. The JSON structure contains a ``mock.selections`` list where each entry has ``pick``,
+    ``player.name``, ``player.position``, and ``player.college.name``.
     """
     match = _REACT_PROPS_RE.search(page)
     if not match:

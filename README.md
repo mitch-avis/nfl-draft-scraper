@@ -110,14 +110,14 @@ python -m nfl_draft_scraper.pipeline scrape-av --force
 
 **Available stages (in dependency order):**
 
-| Stage | Description | Output |
-| --- | --- | --- |
-| `scrape-mddb` | Scrape MDDB consensus big boards | `mddb_big_board_{year}.csv` |
-| `scrape-jlbb` | Scrape JLBB big boards (Playwright) | `jl_big_board_{year}.csv` |
-| `combine` | Fuzzy-match and merge both sources | `combined_big_board_{year}.csv` |
-| `clean-picks` | Clean raw draft picks CSV | `cleaned_draft_picks.csv` |
-| `scrape-av` | Enrich picks with AV data | `cleaned_draft_picks_with_av.csv` |
-| `merge` | Merge big board ranks into picks | `draft_picks_with_big_board_ranks_{year}.csv` |
+| Stage         | Description                         | Output                                        |
+| ------------- | ----------------------------------- | --------------------------------------------- |
+| `scrape-mddb` | Scrape MDDB consensus big boards    | `mddb_big_board_{year}.csv`                   |
+| `scrape-jlbb` | Scrape JLBB big boards (Playwright) | `jl_big_board_{year}.csv`                     |
+| `combine`     | Fuzzy-match and merge both sources  | `combined_big_board_{year}.csv`               |
+| `clean-picks` | Clean raw draft picks CSV           | `cleaned_draft_picks.csv`                     |
+| `scrape-av`   | Enrich picks with AV data           | `cleaned_draft_picks_with_av.csv`             |
+| `merge`       | Merge big board ranks into picks    | `draft_picks_with_big_board_ranks_{year}.csv` |
 
 ### Individual Stages
 

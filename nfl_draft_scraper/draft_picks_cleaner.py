@@ -1,8 +1,7 @@
 """Module to clean and filter NFL draft picks data.
 
-Downloads the raw draft picks CSV from NFLverse, keeps only relevant columns
-and seasons from START_YEAR onward, computes the pick-within-round number,
-sorts, and writes the cleaned data.
+Downloads the raw draft picks CSV from NFLverse, keeps only relevant columns and seasons from
+START_YEAR onward, computes the pick-within-round number, sorts, and writes the cleaned data.
 """
 
 from __future__ import annotations
@@ -55,8 +54,8 @@ def _clean_draft_picks(raw_df: pl.DataFrame, *, start_year: int) -> pl.DataFrame
     if missing:
         log.warning("Columns not found in the DataFrame: %s", missing)
 
-    # Cast numeric columns so sorting is numeric, not lexicographic. Strings
-    # may have leading whitespace; cast strict=False yields nulls on failure.
+    # Cast numeric columns so sorting is numeric, not lexicographic. Strings may have leading
+    # whitespace; cast strict=False yields nulls on failure.
     numeric_casts = [
         pl.col(c).cast(pl.Float64, strict=False).alias(c)
         for c in ("season", "round", "pick")

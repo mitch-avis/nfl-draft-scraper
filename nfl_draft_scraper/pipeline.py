@@ -1,8 +1,7 @@
 """Pipeline orchestrator for the NFL Draft Scraper.
 
-Coordinates the full data pipeline with on-demand logic: checks which
-data already exists and only runs the stages that are needed (or that
-the user explicitly requests).
+Coordinates the full data pipeline with on-demand logic: checks which data already exists and only
+runs the stages that are needed (or that the user explicitly requests).
 
 Stages, in dependency order:
   1. scrape-mddb   — scrape MDDB big boards
@@ -12,9 +11,8 @@ Stages, in dependency order:
   5. scrape-av      — enrich cleaned picks with AV data
   6. merge          — merge big board ranks into AV-enriched picks
 
-Running with no arguments performs a smart run that skips stages whose
-output files already exist.  Use ``--force`` to re-run everything, or
-pass specific stage names to run only those stages.
+Running with no arguments performs a smart run that skips stages whose output files already exist.
+Use ``--force`` to re-run everything, or pass specific stage names to run only those stages.
 """
 
 from __future__ import annotations
@@ -139,8 +137,8 @@ def run_pipeline(stages: list[str] | None = None, *, force: bool = False) -> Non
     """Run the specified pipeline stages, or all stages if none specified.
 
     Args:
-        stages: List of stage names to run.  ``None`` means all stages.
-        force: If True, run every requested stage regardless of existing data.
+        stages: List of stage names to run.  ``None`` means all stages. force: If True, run every
+        requested stage regardless of existing data.
 
     """
     target_stages = stages if stages else list(STAGES)

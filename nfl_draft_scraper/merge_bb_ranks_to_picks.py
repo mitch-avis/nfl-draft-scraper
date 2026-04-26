@@ -1,9 +1,9 @@
 """Merge big board ranks into cleaned draft picks with AV for each draft year.
 
-For each year, matches drafted players to their big board ranks using fuzzy matching,
-and outputs a new CSV with round, round_pick, pick (overall), team, pfr_player_id,
-player, position, category, college, MDDB Rank, JLBB Rank, Consensus, JL_Avg, JL_SD,
-JL_Sources, Sources, yearly AVs, career AV, and weighted career AV.
+For each year, matches drafted players to their big board ranks using fuzzy matching, and outputs a
+new CSV with round, round_pick, pick (overall), team, pfr_player_id, player, position, category,
+college, MDDB Rank, JLBB Rank, Consensus, JL_Avg, JL_SD, JL_Sources, Sources, yearly AVs, career AV,
+and weighted career AV.
 
 Output: draft_picks_with_big_board_ranks_<year>.csv for each year.
 """
@@ -24,8 +24,8 @@ _NAME_SUFFIXES = frozenset({"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"})
 # ---------------------------------------------------------------------------
 # Player name aliases
 # ---------------------------------------------------------------------------
-# Maps lowercased draft-pick names (from NFLverse) to lowercased big-board
-# names when the two sources use different names for the same player.
+# Maps lowercased draft-pick names (from NFLverse) to lowercased big-board names when the two
+# sources use different names for the same player.
 _PLAYER_NAME_ALIASES: dict[str, str] = {
     "boogie basham": "carlos basham jr.",  # 2021 — Carlos Basham Jr.
     "quan martin": "jartavius martin",  # 2023 — Jartavius Martin
@@ -36,8 +36,8 @@ _PLAYER_NAME_ALIASES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Position normalisation
 # ---------------------------------------------------------------------------
-# Each position code maps to one or more canonical groups.  Two positions are
-# compatible when their group sets overlap.
+# Each position code maps to one or more canonical groups.  Two positions are compatible when their
+# group sets overlap.
 _POSITION_TO_GROUPS: dict[str, frozenset[str]] = {
     # Quarterback
     "qb": frozenset({"QB"}),
@@ -86,8 +86,7 @@ _POSITION_TO_GROUPS: dict[str, frozenset[str]] = {
 def _positions_compatible(pos_a: str, pos_b: str) -> bool:
     """Return True when two position codes could refer to the same player.
 
-    Unknown or empty codes are treated as compatible (we cannot disprove
-    the match).
+    Unknown or empty codes are treated as compatible (we cannot disprove the match).
     """
     a = pos_a.strip().lower()
     b = pos_b.strip().lower()
@@ -103,8 +102,8 @@ def _positions_compatible(pos_a: str, pos_b: str) -> bool:
 # ---------------------------------------------------------------------------
 # School normalisation
 # ---------------------------------------------------------------------------
-# Map known alternative names to a single canonical form.  Both directions
-# must normalise to the same value.
+# Map known alternative names to a single canonical form.  Both directions must normalise to the
+# same value.
 _SCHOOL_ALIASES: dict[str, str] = {
     # Acronym vs full name
     "ucf": "central florida",
@@ -130,9 +129,8 @@ _SCHOOL_ALIASES: dict[str, str] = {
 def _normalize_school(school: str) -> str:
     """Normalise a school name for comparison.
 
-    Applies alias mapping, then expands common PFR abbreviations
-    ("St." → "State", "Col." → "College") so both big-board and
-    draft-pick school names converge to the same canonical form.
+    Applies alias mapping, then expands common PFR abbreviations ("St." → "State", "Col." →
+    "College") so both big-board and draft-pick school names converge to the same canonical form.
     """
     s = school.strip().lower()
     if s in _SCHOOL_ALIASES:
@@ -158,8 +156,7 @@ def _schools_compatible(school_a: str, school_b: str) -> bool:
 def _extract_first_name(name: str) -> str:
     """Extract the first name from a full name.
 
-    Returns the first whitespace-delimited token, lowercased.
-    Returns empty string for empty input.
+    Returns the first whitespace-delimited token, lowercased. Returns empty string for empty input.
     """
     parts = name.strip().lower().split()
     return parts[0] if parts else ""
@@ -173,13 +170,12 @@ def _strip_punctuation(text: str) -> str:
 def _first_names_compatible(name_a: str, name_b: str) -> bool:
     """Check whether two player names have compatible first names.
 
-    Strips punctuation (periods, apostrophes) then checks if one first
-    name is a substring of the other.  This catches abbreviations
-    (Pat⊂Patrick, Cam⊂Cameron), nicknames (Bisi⊂Olabisi, Cobie⊂Decobie),
-    and punctuation variants (DJ=D.J., RJ=R.J.).
+    Strips punctuation (periods, apostrophes) then checks if one first name is a substring of the
+    other.  This catches abbreviations (Pat⊂Patrick, Cam⊂Cameron), nicknames (Bisi⊂Olabisi,
+    Cobie⊂Decobie), and punctuation variants (DJ=D.J., RJ=R.J.).
 
-    Returns False only when the stripped first names share no substring
-    relationship.  Empty names are not compatible.
+    Returns False only when the stripped first names share no substring relationship.  Empty names
+    are not compatible.
     """
     first_a = _strip_punctuation(_extract_first_name(name_a))
     first_b = _strip_punctuation(_extract_first_name(name_b))
@@ -202,10 +198,9 @@ def _extract_last_name(name: str) -> str:
 def _last_names_compatible(name_a: str, name_b: str) -> bool:
     """Check whether two player names share a compatible last name.
 
-    Handles hyphenated last names by checking whether any component of
-    one last name appears in the other (e.g. "Tomlinson" matches
-    "Hodges-Tomlinson").  Also handles cases where one last name is a
-    substring of the other (e.g. "to'oto'o" contains "to'o").
+    Handles hyphenated last names by checking whether any component of one last name appears in the
+    other (e.g. "Tomlinson" matches "Hodges-Tomlinson").  Also handles cases where one last name is
+    a substring of the other (e.g. "to'oto'o" contains "to'o").
     """
     last_a = _extract_last_name(name_a)
     last_b = _extract_last_name(name_b)
@@ -235,10 +230,9 @@ def _fuzzy_match_player(
 ) -> str | None:
     """Return the closest matching string from *choices* for *name*.
 
-    Return ``None`` when:
-    * no candidate exceeds the *cutoff* similarity threshold,
-    * the candidate's last name is incompatible with the input name, or
-    * *both* the candidate's position and school are incompatible with the
+    Return ``None`` when: * no candidate exceeds the *cutoff* similarity threshold, * the
+    candidate's last name is incompatible with the input name, or * *both* the candidate's position
+    and school are incompatible with the
       pick's position and school (when that data is available).
     """
     matches: list[str] = difflib.get_close_matches(str(name), choices, n=1, cutoff=cutoff)
@@ -269,8 +263,8 @@ _BB_RANK_COLUMNS: list[str] = [
     "Sources",
 ]
 
-# Mapping from combined-CSV column name to output column name in the draft
-# picks file.  Only columns that need renaming are listed here.
+# Mapping from combined-CSV column name to output column name in the draft picks file.  Only columns
+# that need renaming are listed here.
 _BB_COL_RENAME: dict[str, str] = {
     "MDDB": "MDDB Rank",
     "JLBB": "JLBB Rank",
@@ -286,8 +280,8 @@ def _get_rank_lists(
 ) -> dict[str, list[Any | None]]:
     """Fuzzy match and collect big board ranks for each drafted player.
 
-    Returns a dict mapping output column names to parallel value lists,
-    one entry per row of *picks_year*.
+    Returns a dict mapping output column names to parallel value lists, one entry per row of
+    *picks_year*.
     """
     result: dict[str, list[Any | None]] = {
         _BB_COL_RENAME.get(col, col): [] for col in _BB_RANK_COLUMNS
@@ -336,10 +330,9 @@ def _get_rank_lists(
 def _get_av_columns(df: pl.DataFrame) -> list[str]:
     """Return the list of AV columns present in the DataFrame.
 
-    AV columns are any 4-digit year columns (per-season AV) plus the fixed set of
-    aggregate AV columns. Year columns are detected from the DataFrame itself rather
-    than the pipeline year range, since AV data may span earlier seasons than the
-    current scraping window.
+    AV columns are any 4-digit year columns (per-season AV) plus the fixed set of aggregate AV
+    columns. Year columns are detected from the DataFrame itself rather than the pipeline year
+    range, since AV data may span earlier seasons than the current scraping window.
     """
     year_cols: list[str] = sorted(col for col in df.columns if len(col) == 4 and col.isdigit())
     aggregate_cols: list[str] = [

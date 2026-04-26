@@ -1,15 +1,14 @@
 """Module to clean and combine NFL draft big board data from multiple sources.
 
-Reads CSVs from MDDB and JL, deduplicates and sorts them,
-then fuzzy-matches player names to produce a unified combined CSV per year.
+Reads CSVs from MDDB and JL, deduplicates and sorts them, then fuzzy-matches player names to produce
+a unified combined CSV per year.
 
-The weighted consensus formula treats each JL individual-source rank as one
-vote and the single MDDB composite rank as ``MDDB_WEIGHT`` votes:
+The weighted consensus formula treats each JL individual-source rank as one vote and the single MDDB
+composite rank as ``MDDB_WEIGHT`` votes:
 
     consensus = (jl_avg × jl_n + mddb_rank × MDDB_WEIGHT) / (jl_n + MDDB_WEIGHT)
 
-When only one board has a player, that board's value (JL avg or MDDB rank)
-is used directly.
+When only one board has a player, that board's value (JL avg or MDDB rank) is used directly.
 """
 
 from __future__ import annotations
@@ -28,9 +27,9 @@ from nfl_draft_scraper.merge_bb_ranks_to_picks import (
 )
 from nfl_draft_scraper.utils.logger import log
 
-# Fixed weight assigned to the MDDB composite rank when computing the weighted
-# consensus.  Represents roughly the number of unique, high-quality sources in
-# the MDDB pool that are not already captured by JL's individual sources.
+# Fixed weight assigned to the MDDB composite rank when computing the weighted consensus.
+# Represents roughly the number of unique, high-quality sources in the MDDB pool that are not
+# already captured by JL's individual sources.
 MDDB_WEIGHT: int = 6
 
 # Columns in the JL CSV that are metadata, not source-rank columns.
@@ -60,8 +59,8 @@ def _clean_df(data_frame: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
 def _best_match(name: str, choices: list[str], cutoff: float = 0.75) -> str | None:
     """Return the closest matching string from choices for name using difflib.
 
-    Return None if no match exceeds the cutoff threshold, if the candidate's
-    last name is not compatible, or if the first names are incompatible.
+    Return None if no match exceeds the cutoff threshold, if the candidate's last name is not
+    compatible, or if the first names are incompatible.
     """
     matches = difflib.get_close_matches(name, choices, n=1, cutoff=cutoff)
     if not matches:
@@ -121,8 +120,8 @@ def _build_combined_rows(
             if raw_jl is not None:
                 jlbb_rank = float(raw_jl)
 
-        # --- JL individual source ranks ---
-        # Look up by the matched name (which may differ from `player` due to fuzzy matching)
+        # --- JL individual source ranks --- Look up by the matched name (which may differ from
+        # `player` due to fuzzy matching)
         jl_matched_name: str | None = str(jlbb_record["name"]) if jlbb_record is not None else None
         jl_ranks: list[float] = jl_source_ranks.get(jl_matched_name, []) if jl_matched_name else []
         jl_n = len(jl_ranks)
@@ -184,8 +183,8 @@ def _build_combined_rows(
 def _extract_jl_source_ranks(jl_df: pl.DataFrame) -> dict[str, list[float]]:
     """Extract per-player individual source ranks from the JL big board DataFrame.
 
-    Returns a dict mapping player name to a list of non-null source rank values.
-    Source columns are identified as any column not in ``_JL_META_COLUMNS``.
+    Returns a dict mapping player name to a list of non-null source rank values. Source columns are
+    identified as any column not in ``_JL_META_COLUMNS``.
     """
     source_cols = [c for c in jl_df.columns if c not in _JL_META_COLUMNS]
     log.debug("JL source columns: %s", source_cols)
@@ -198,9 +197,9 @@ def _extract_jl_source_ranks(jl_df: pl.DataFrame) -> dict[str, list[float]]:
     return result
 
 
-# Schema for the combined big board output. Polars cannot infer a stable schema from an
-# empty list of dicts, so we declare it explicitly. Mixed-numeric columns use Float64
-# so nulls are representable.
+# Schema for the combined big board output. Polars cannot infer a stable schema from an empty list
+# of dicts, so we declare it explicitly. Mixed-numeric columns use Float64 so nulls are
+# representable.
 _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "Player": pl.String,
     "Position": pl.String,
@@ -218,9 +217,8 @@ _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
 def _combine_year(year: int) -> None:
     """Read MDDB and JL CSVs for the given year, clean and combine them.
 
-    Fuzzy-match names and write out a combined CSV with columns:
-    Player, Position, School, MDDB, JLBB, JL_Avg, JL_SD, JL_Sources,
-    Consensus, Sources.
+    Fuzzy-match names and write out a combined CSV with columns: Player, Position, School, MDDB,
+    JLBB, JL_Avg, JL_SD, JL_Sources, Consensus, Sources.
     """
     log.info("Combining big boards for year %s", year)
     mddb_path = constants.DATA_PATH / f"mddb_big_board_{year}.csv"

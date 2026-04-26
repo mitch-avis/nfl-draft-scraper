@@ -24,15 +24,14 @@ from nfl_draft_scraper.utils.logger import log
 # Suppress noisy GNOME Keyring tracebacks from Chrome cookie extraction
 logging.getLogger("sportsipy.chrome_cookies").setLevel(logging.WARNING)
 
-# PFR uses 'data-stat="team_name_abbr"' in stat tables (passing, defense, …) but
-# keeps the older 'data-stat="team"' in the games_played table (used for OL, P, K,
-# etc.). sportsipy's default scheme only matches the latter. Use a CSS union
-# selector so that Player objects correctly populate team_abbreviation regardless
-# of which table supplies the data.
+# PFR uses 'data-stat="team_name_abbr"' in stat tables (passing, defense, …) but keeps the older
+# 'data-stat="team"' in the games_played table (used for OL, P, K, etc.). sportsipy's default scheme
+# only matches the latter. Use a CSS union selector so that Player objects correctly populate
+# team_abbreviation regardless of which table supplies the data.
 PLAYER_SCHEME["team_abbreviation"] = 'td[data-stat="team"], td[data-stat="team_name_abbr"]'
 
-# Franchises that relocated within the tracking window. Maps each historical or
-# current abbreviation to the full set of abbreviations for the same franchise.
+# Franchises that relocated within the tracking window. Maps each historical or current abbreviation
+# to the full set of abbreviations for the same franchise.
 FRANCHISE_EQUIVALENTS: dict[str, frozenset[str]] = {
     "SDG": frozenset({"SDG", "LAC"}),
     "LAC": frozenset({"SDG", "LAC"}),
@@ -78,8 +77,8 @@ def _get_draft_team_av_by_year(
 ) -> dict[str, int]:
     """Build a dict mapping each year to AV earned on the drafting franchise only.
 
-    Uses ``FRANCHISE_EQUIVALENTS`` to account for team relocations (e.g. SDG → LAC).
-    Years where the player is on a different franchise are recorded as zero.
+    Uses ``FRANCHISE_EQUIVALENTS`` to account for team relocations (e.g. SDG → LAC). Years where the
+    player is on a different franchise are recorded as zero.
     """
     franchise_set = FRANCHISE_EQUIVALENTS.get(draft_team, frozenset({draft_team}))
     av_by_year: dict[str, int] = {str(y): 0 for y in all_years}
@@ -113,8 +112,8 @@ def _calculate_av(
 ) -> tuple[dict[str, int], int, float, int, float]:
     """Retrieve a Player object, clean its stats, and compute AV.
 
-    Return (av_by_year, career_av, weighted_career_av,
-    draft_team_career_av, draft_team_weighted_career_av).
+    Return (av_by_year, career_av, weighted_career_av, draft_team_career_av,
+    draft_team_weighted_career_av).
     """
     player = Player(player_id)
     if player.dataframe is None:
@@ -152,8 +151,8 @@ def _initialize_draft_picks_df(
 ) -> list[dict[str, Any]]:
     """Load or initialize the draft picks rows, adding AV columns if needed.
 
-    Returns a list of row dicts keyed by column name. This list is the working
-    set that the AV update loop mutates as it processes each player.
+    Returns a list of row dicts keyed by column name. This list is the working set that the AV
+    update loop mutates as it processes each player.
     """
     if os.path.exists(checkpoint_path):
         log.info("🔄 Resuming Phase 1 from checkpoint: %s", checkpoint_path)
@@ -185,8 +184,8 @@ def _update_av(*, force: bool = False, checkpoint_every: int = 20) -> None:
     """Update AV using sportsipy and checkpoint regularly.
 
     Args:
-        force: If True, re-scrape every player regardless of av_complete status.
-        checkpoint_every: Save a checkpoint CSV after this many players are processed.
+        force: If True, re-scrape every player regardless of av_complete status. checkpoint_every:
+        Save a checkpoint CSV after this many players are processed.
 
     """
     draft_path = str(constants.DATA_PATH / "cleaned_draft_picks.csv")

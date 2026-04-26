@@ -21,9 +21,8 @@ def _make_raw_df(
 ) -> pl.DataFrame:
     """Build a raw draft-picks DataFrame resembling the NFLverse CSV.
 
-    When *string_cols* is True the numeric columns are stored as strings with
-    leading whitespace, mimicking the quirk in the real CSV that caused the
-    original string-sort bug.
+    When *string_cols* is True the numeric columns are stored as strings with leading whitespace,
+    mimicking the quirk in the real CSV that caused the original string-sort bug.
     """
     if seasons is None:
         seasons = [2016, 2020, 2021]
@@ -101,8 +100,8 @@ class TestCleanDraftPicks:
     def test_sorts_by_season_and_pick_as_integers(self):
         """Verify sorting treats season and pick as integers not strings.
 
-        With string sorting, pick '9' would sort after '80'. This test uses
-        string-typed columns to reproduce the original bug.
+        With string sorting, pick '9' would sort after '80'. This test uses string-typed columns to
+        reproduce the original bug.
         """
         raw = _make_raw_df([2020], string_cols=True)
         result = _clean_draft_picks(raw, start_year=2016)
