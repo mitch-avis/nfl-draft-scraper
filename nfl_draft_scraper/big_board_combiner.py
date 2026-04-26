@@ -3,19 +3,35 @@
 Reads CSVs from Wide Left (WL), JL, and (optionally) Mock Draft Database (MDDB), deduplicates
 and sorts them, then fuzzy-matches player names to produce a unified combined CSV per year.
 
-The weighted consensus formula treats each JL individual-source rank as one vote and each
-composite consensus board (WL, MDDB) as a fixed number of votes:
+Consensus rank is an inverse-variance weighted mean of the available source ranks. Each source
+contributes a per-player point estimate ``R_s`` and a standard error ``sigma_s``::
 
-    consensus = (jl_avg × jl_n + wl_rank × WL_WEIGHT + mddb_rank × MDDB_WEIGHT) / (sum of weights)
+    consensus = sum(R_s / sigma_s**2) / sum(1 / sigma_s**2)
+    consensus_se = sqrt(1 / sum(1 / sigma_s**2))
 
-Only sources that have the player contribute to the numerator and the divisor. When only one
-board has a player, that board's value is used directly. MDDB is included only when a
-``mddb_big_board_{year}.csv`` file exists for the year being combined.
+Per-source standard errors
+--------------------------
+* **WL** -- Wide Left publishes a rank-adjusted ``Variance`` score centered at 100, where each
+  +/-15 step is a notable shift in analyst disagreement. We convert that to a rank-unit
+  uncertainty via ``WL_VARIANCE_BASE_SIGMA * (variance / 100)`` and then divide by
+  ``sqrt(WL_NEFF)`` to get the standard error of WL's mean. Since WL aggregates ~100 highly
+  overlapping public sources, ``WL_NEFF`` is set to 20 (effective independent voters) rather
+  than 100. When WL has the player but variance is missing, an average variance score of 100 is
+  assumed.
+* **MDDB** -- No per-player variance is published, so we use a fixed ``MDDB_PRIOR_SIGMA``
+  together with ``MDDB_NEFF`` (also 20). MDDB will not be updated after 2026 (paywall).
+* **JL** -- We have the actual individual source ranks, so we use the empirical SD across them
+  with a small ``JL_SD_FLOOR`` to prevent overconfidence when sources happen to coincide; the SE
+  is then ``JL_SD / sqrt(JL_Sources)``. With only one JL source we fall back to a broad prior.
+
+The ``Sources`` column is preserved as the sum of effective independent voters contributed by
+each available source, for human reading; it is no longer used in the math.
 """
 
 from __future__ import annotations
 
 import difflib
+import math
 import statistics
 from collections.abc import Iterable
 from typing import Any
@@ -29,14 +45,26 @@ from nfl_draft_scraper.merge_bb_ranks_to_picks import (
 )
 from nfl_draft_scraper.utils.logger import log
 
-# Fixed weight assigned to the WL composite rank when computing the weighted consensus.
-# Represents roughly the number of unique, high-quality sources in the WL pool that are not
-# already captured by JL's individual sources.
-WL_WEIGHT: int = 6
+# Effective number of independent voters represented by each large consensus board. Both WL and
+# MDDB pool ~100 public big boards with heavy overlap, so the effective independence is much
+# lower than the nominal source count.
+WL_NEFF: int = 20
+MDDB_NEFF: int = 20
 
-# Fixed weight assigned to the MDDB composite rank. MDDB is itself a consensus of many public
-# big boards, so it is given the same weight as WL when both are available.
-MDDB_WEIGHT: int = 6
+# Rank-unit interpretation of the WL ``Variance`` score. At Variance = 100 ("average"
+# disagreement) the SD of an individual analyst's rank around the consensus is approximately
+# this many ranks; the per-player SD scales linearly with variance / 100.
+WL_VARIANCE_BASE_SIGMA: float = 25.0
+
+# Fixed prior SD (rank units) for the MDDB consensus, since no per-player variance is published.
+MDDB_PRIOR_SIGMA: float = 25.0
+
+# Floor on JL's empirical SD to avoid overconfidence when a small number of sources happen to
+# agree closely on a single player.
+JL_SD_FLOOR: float = 1.0
+
+# Standard error to use for a JL board with a single source (no SD available).
+JL_SINGLE_SOURCE_SE: float = WL_VARIANCE_BASE_SIGMA
 
 # Columns in the JL CSV that are metadata, not source-rank columns.
 _JL_META_COLUMNS = frozenset({"rank", "name", "pos", "school", "conference", "avg", "sd"})
@@ -97,6 +125,30 @@ def _get_record(player: str, df: pl.DataFrame, names: list[str]) -> dict[str, An
     return None
 
 
+def _wl_standard_error(variance: float | None) -> float:
+    """Return the standard error of the WL mean rank for a given per-player variance score.
+
+    A missing variance is treated as the mean (100). The variance score is rank-adjusted and
+    centered at 100, so we map it to a rank-unit SD via ``WL_VARIANCE_BASE_SIGMA * v / 100`` and
+    divide by ``sqrt(WL_NEFF)`` to obtain the SE of the mean.
+    """
+    v = variance if variance is not None else 100.0
+    sigma_rank = WL_VARIANCE_BASE_SIGMA * (v / 100.0)
+    return sigma_rank / math.sqrt(WL_NEFF)
+
+
+def _jl_standard_error(jl_sd: float | None, jl_n: int) -> float:
+    """Return the standard error of the JL mean rank.
+
+    Caller must guarantee ``jl_n >= 1``. With a single source we have no empirical SD, so we fall
+    back to a broad prior. With more sources we use ``max(jl_sd, JL_SD_FLOOR) / sqrt(jl_n)`` to
+    avoid overconfidence when sources happen to coincide closely.
+    """
+    if jl_n == 1 or jl_sd is None:
+        return JL_SINGLE_SOURCE_SE
+    return max(jl_sd, JL_SD_FLOOR) / math.sqrt(jl_n)
+
+
 def _build_combined_rows(
     all_players: Iterable[str],
     wl_df: pl.DataFrame,
@@ -108,11 +160,13 @@ def _build_combined_rows(
     mddb_df: pl.DataFrame | None = None,
     mddb_names: list[str] | None = None,
 ) -> list[dict[str, str | float | int | None]]:
-    """Build combined rows for all players with weighted consensus ranking.
+    """Build combined rows for all players with inverse-variance weighted consensus.
 
     ``mddb_df`` and ``mddb_names`` are optional; when both are provided the MDDB rank is included
     in the weighted consensus and surfaced as the ``MDDB`` column.
     """
+    mddb_se = MDDB_PRIOR_SIGMA / math.sqrt(MDDB_NEFF)
+
     combined_rows: list[dict[str, str | float | int | None]] = []
     for player in all_players:
         wl_record = _get_record(player, wl_df, wl_names)
@@ -123,56 +177,70 @@ def _build_combined_rows(
             else None
         )
 
-        # --- WL rank ---
-        wl_rank: int | None = None
-        if wl_record is not None:
-            raw_wl = wl_record.get("rank")
-            if raw_wl is not None:
-                wl_rank = int(raw_wl)
+        # --- Per-source rank values ---
+        wl_rank: float | None = (
+            float(wl_record["rank"])
+            if wl_record is not None and wl_record.get("rank") is not None
+            else None
+        )
+        wl_variance: float | None = None
+        if wl_record is not None and wl_record.get("variance") is not None:
+            wl_variance = float(wl_record["variance"])
 
-        # --- MDDB rank ---
-        mddb_rank: int | None = None
-        if mddb_record is not None:
-            raw_mddb = mddb_record.get("rank")
-            if raw_mddb is not None:
-                mddb_rank = int(raw_mddb)
+        mddb_rank: float | None = (
+            float(mddb_record["rank"])
+            if mddb_record is not None and mddb_record.get("rank") is not None
+            else None
+        )
 
-        # --- JLBB composite rank ---
-        jlbb_rank: float | None = None
-        if jlbb_record is not None:
-            raw_jl = jlbb_record.get("rank")
-            if raw_jl is not None:
-                jlbb_rank = float(raw_jl)
+        jlbb_rank: float | None = (
+            float(jlbb_record["rank"])
+            if jlbb_record is not None and jlbb_record.get("rank") is not None
+            else None
+        )
 
-        # --- JL individual source ranks --- Look up by the matched name (which may differ from
-        # `player` due to fuzzy matching)
+        # --- JL individual source ranks (looked up by the matched JL name) ---
         jl_matched_name: str | None = str(jlbb_record["name"]) if jlbb_record is not None else None
         jl_ranks: list[float] = jl_source_ranks.get(jl_matched_name, []) if jl_matched_name else []
         jl_n = len(jl_ranks)
-
-        # JL aggregate stats
         jl_avg: float | None = statistics.mean(jl_ranks) if jl_n > 0 else None
-        jl_sd: float | None = statistics.pstdev(jl_ranks) if jl_n > 0 else None
+        jl_sd: float | None = statistics.pstdev(jl_ranks) if jl_n > 1 else None
 
-        # --- Weighted consensus across all available sources ---
-        weighted_sum: float = 0.0
-        total_weight: int = 0
-        if jl_avg is not None:
-            weighted_sum += jl_avg * jl_n
-            total_weight += jl_n
+        # --- Inverse-variance weighted consensus across whichever sources are present ---
+        precision_sum = 0.0  # sum of 1 / sigma^2
+        weighted_sum = 0.0  # sum of rank / sigma^2
+        sources_eff = 0  # human-readable sum of effective independent voters
+
         if wl_rank is not None:
-            weighted_sum += wl_rank * WL_WEIGHT
-            total_weight += WL_WEIGHT
+            se_wl = _wl_standard_error(wl_variance)
+            w = 1.0 / (se_wl * se_wl)
+            precision_sum += w
+            weighted_sum += wl_rank * w
+            sources_eff += WL_NEFF
         if mddb_rank is not None:
-            weighted_sum += mddb_rank * MDDB_WEIGHT
-            total_weight += MDDB_WEIGHT
+            w = 1.0 / (mddb_se * mddb_se)
+            precision_sum += w
+            weighted_sum += mddb_rank * w
+            sources_eff += MDDB_NEFF
+        if jl_avg is not None:
+            se_jl = _jl_standard_error(jl_sd, jl_n)
+            w = 1.0 / (se_jl * se_jl)
+            precision_sum += w
+            weighted_sum += jl_avg * w
+            sources_eff += jl_n
 
-        consensus: float | None = weighted_sum / total_weight if total_weight > 0 else None
-        total_sources: int | None = total_weight if total_weight > 0 else None
+        consensus: float | None
+        consensus_se: float | None
+        if precision_sum > 0:
+            consensus = weighted_sum / precision_sum
+            consensus_se = math.sqrt(1.0 / precision_sum)
+        else:
+            consensus = None
+            consensus_se = None
 
         # --- Position / School: prefer WL, then MDDB, then JLBB ---
         def _field(record: dict[str, Any] | None, key: str) -> str:
-            """Return record[key] as a non-null string, or empty string when absent."""
+            """Return ``record[key]`` as a non-null string, or empty string when absent."""
             if record is None or record.get(key) is None:
                 return ""
             return str(record[key])
@@ -189,14 +257,16 @@ def _build_combined_rows(
                 "Player": player,
                 "Position": pos,
                 "School": school,
-                "WL": float(wl_rank) if wl_rank is not None else None,
-                "MDDB": float(mddb_rank) if mddb_rank is not None else None,
+                "WL": wl_rank,
+                "WL_Variance": wl_variance,
+                "MDDB": mddb_rank,
                 "JLBB": jlbb_rank,
                 "JL_Avg": round(jl_avg, 4) if jl_avg is not None else None,
                 "JL_SD": round(jl_sd, 4) if jl_sd is not None else None,
                 "JL_Sources": jl_n if jl_n > 0 else None,
                 "Consensus": round(consensus, 4) if consensus is not None else None,
-                "Sources": total_sources,
+                "Consensus_SE": round(consensus_se, 4) if consensus_se is not None else None,
+                "Sources": sources_eff if sources_eff > 0 else None,
             }
         )
     return combined_rows
@@ -227,21 +297,23 @@ _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "Position": pl.String,
     "School": pl.String,
     "WL": pl.Float64,
+    "WL_Variance": pl.Float64,
     "MDDB": pl.Float64,
     "JLBB": pl.Float64,
     "JL_Avg": pl.Float64,
     "JL_SD": pl.Float64,
     "JL_Sources": pl.Int64,
     "Consensus": pl.Float64,
+    "Consensus_SE": pl.Float64,
     "Sources": pl.Int64,
 }
 
 
 def _combine_year(year: int) -> None:
-    """Read WL and JL CSVs for the given year, clean and combine them.
+    """Read WL and JL CSVs (and optional MDDB) for the given year, clean and combine them.
 
     Fuzzy-match names and write out a combined CSV with columns: Player, Position, School, WL,
-    JLBB, JL_Avg, JL_SD, JL_Sources, Consensus, Sources.
+    WL_Variance, MDDB, JLBB, JL_Avg, JL_SD, JL_Sources, Consensus, Consensus_SE, Sources.
     """
     log.info("Combining big boards for year %s", year)
     wl_path = constants.DATA_PATH / f"wl_big_board_{year}.csv"
@@ -252,7 +324,7 @@ def _combine_year(year: int) -> None:
 
     wl_df = _clean_df(
         pl.read_csv(wl_path, null_values=["NA"]),
-        ["name", "pos", "school", "rank"],
+        ["name", "pos", "school", "rank", "variance"],
     )
 
     # Read the full JL CSV to access individual source rank columns

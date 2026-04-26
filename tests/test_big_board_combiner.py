@@ -4,7 +4,8 @@ import polars as pl
 import pytest
 
 from nfl_draft_scraper.big_board_combiner import (
-    WL_WEIGHT,
+    MDDB_NEFF,
+    WL_NEFF,
     _best_match,
     _build_combined_rows,
     _clean_df,
@@ -185,7 +186,7 @@ class TestBuildCombinedRows:
         assert rows[0]["School"] == "Stanford"
 
     def test_weighted_consensus_both_sources(self):
-        """Verify weighted consensus when both WL and JL sources are present."""
+        """Verify inverse-variance consensus pulls toward WL when JL has high SD."""
         wl_df = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [3], "pos": ["QB"], "school": ["MIT"]})
         jl_source_ranks = {"Alice": [2.0, 4.0, 6.0]}
@@ -196,8 +197,15 @@ class TestBuildCombinedRows:
         assert rows[0]["JLBB"] == 3.0
         assert rows[0]["JL_Avg"] == pytest.approx(4.0)
         assert rows[0]["JL_Sources"] == 3
-        assert rows[0]["Consensus"] == pytest.approx(2.0)
-        assert rows[0]["Sources"] == 3 + WL_WEIGHT
+        # Consensus must lie strictly between WL (1) and JL_Avg (4).
+        consensus = rows[0]["Consensus"]
+        assert isinstance(consensus, float)
+        assert 1.0 < consensus < 4.0
+        # Sources column reports effective independent voters.
+        assert rows[0]["Sources"] == WL_NEFF + 3
+        consensus_se = rows[0]["Consensus_SE"]
+        assert isinstance(consensus_se, float)
+        assert consensus_se > 0
 
     def test_weighted_consensus_only_jl(self):
         """Verify consensus equals JL avg when only JL sources are present."""
@@ -224,7 +232,7 @@ class TestBuildCombinedRows:
             ["Alice"], wl_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
         )
         assert rows[0]["Consensus"] == pytest.approx(5.0)
-        assert rows[0]["Sources"] == WL_WEIGHT
+        assert rows[0]["Sources"] == WL_NEFF
         assert rows[0]["JL_Avg"] is None
         assert rows[0]["JL_Sources"] is None
 
@@ -315,8 +323,6 @@ class TestBuildCombinedRowsWithMddb:
 
     def test_mddb_contributes_to_consensus(self):
         """Verify MDDB rank participates in the weighted consensus alongside WL."""
-        from nfl_draft_scraper.big_board_combiner import MDDB_WEIGHT
-
         wl_df = pl.DataFrame({"name": ["Alice"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [9], "pos": ["WR"], "school": ["Stanford"]}
@@ -334,13 +340,12 @@ class TestBuildCombinedRowsWithMddb:
         )
         assert rows[0]["WL"] == 2.0
         assert rows[0]["MDDB"] == 4.0
+        # With identical priors WL == MDDB weight, so consensus is the simple mean.
         assert rows[0]["Consensus"] == pytest.approx(3.0)
-        assert rows[0]["Sources"] == WL_WEIGHT + MDDB_WEIGHT
+        assert rows[0]["Sources"] == WL_NEFF + MDDB_NEFF
 
     def test_only_mddb_has_player(self):
         """Verify pos/school fall back to MDDB when WL and JLBB lack the player."""
-        from nfl_draft_scraper.big_board_combiner import MDDB_WEIGHT
-
         wl_df = pl.DataFrame({"name": ["Bob"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
         jlbb_df = pl.DataFrame(
             {"name": ["Bob"], "rank": [1], "pos": ["WR"], "school": ["Stanford"]}
@@ -361,4 +366,70 @@ class TestBuildCombinedRowsWithMddb:
         assert rows[0]["Position"] == "DE"
         assert rows[0]["School"] == "Yale"
         assert rows[0]["Consensus"] == pytest.approx(7.0)
-        assert rows[0]["Sources"] == MDDB_WEIGHT
+        assert rows[0]["Sources"] == MDDB_NEFF
+
+
+class TestInverseVarianceEdgeCases:
+    """Cover residual branches in inverse-variance weighting."""
+
+    def test_jl_single_source_uses_prior_se(self):
+        """Verify a JL board with a single source still contributes to the consensus."""
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [99], "pos": ["QB"], "school": ["MIT"]})
+        jlbb_df = pl.DataFrame(
+            {"name": ["Alice"], "rank": [1], "pos": ["WR"], "school": ["Stanford"]}
+        )
+        rows = _build_combined_rows(
+            ["Alice"],
+            wl_df,
+            jlbb_df,
+            ["Bob"],
+            ["Alice"],
+            jl_source_ranks={"Alice": [1.0]},
+        )
+        assert rows[0]["JL_Sources"] == 1
+        assert rows[0]["JL_SD"] is None
+        assert rows[0]["Consensus"] == pytest.approx(1.0)
+        assert rows[0]["Sources"] == 1
+
+    def test_wl_variance_is_propagated_to_output(self):
+        """Verify WL_Variance is read from the WL DataFrame and included in the row."""
+        wl_df = pl.DataFrame(
+            {
+                "name": ["Alice"],
+                "rank": [1],
+                "pos": ["QB"],
+                "school": ["MIT"],
+                "variance": [85.0],
+            }
+        )
+        jlbb_df = pl.DataFrame({"name": ["Bob"], "rank": [1], "pos": ["WR"], "school": ["Yale"]})
+        rows = _build_combined_rows(
+            ["Alice"], wl_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
+        )
+        assert rows[0]["WL_Variance"] == pytest.approx(85.0)
+
+    def test_low_variance_player_has_smaller_consensus_se(self):
+        """Verify a low-variance (well-agreed) WL player has a smaller Consensus_SE."""
+        wl_df = pl.DataFrame(
+            {
+                "name": ["Confident", "Polarizing"],
+                "rank": [1, 2],
+                "pos": ["QB", "QB"],
+                "school": ["MIT", "MIT"],
+                "variance": [70.0, 130.0],
+            }
+        )
+        jlbb_df = pl.DataFrame({"name": ["X"], "rank": [1], "pos": ["WR"], "school": ["Y"]})
+        rows = _build_combined_rows(
+            ["Confident", "Polarizing"],
+            wl_df,
+            jlbb_df,
+            ["Confident", "Polarizing"],
+            ["X"],
+            jl_source_ranks={},
+        )
+        confident_se = next(r["Consensus_SE"] for r in rows if r["Player"] == "Confident")
+        polarizing_se = next(r["Consensus_SE"] for r in rows if r["Player"] == "Polarizing")
+        assert isinstance(confident_se, float)
+        assert isinstance(polarizing_se, float)
+        assert confident_se < polarizing_se

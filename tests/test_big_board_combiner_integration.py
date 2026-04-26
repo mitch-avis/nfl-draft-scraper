@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from nfl_draft_scraper.big_board_combiner import WL_WEIGHT, _combine_year, main
+from nfl_draft_scraper.big_board_combiner import WL_NEFF, _combine_year, main
 
 
 class TestCombineYear:
@@ -55,7 +55,7 @@ class TestCombineYear:
             assert col in result.columns
 
     def test_handles_no_overlap(self, tmp_path, monkeypatch):
-        """Verify handles no overlap — WL-only gets WL_WEIGHT sources."""
+        """Verify handles no overlap — WL-only gets WL_NEFF effective sources."""
         monkeypatch.setattr("nfl_draft_scraper.big_board_combiner.constants.DATA_PATH", tmp_path)
 
         wl = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
@@ -76,7 +76,7 @@ class TestCombineYear:
         result = pl.read_csv(tmp_path / "combined_big_board_2021.csv")
         assert result.height == 2
         alice = result.filter(pl.col("Player") == "Alice").row(0, named=True)
-        assert alice["Sources"] == WL_WEIGHT
+        assert alice["Sources"] == WL_NEFF
 
 
 class TestMain:

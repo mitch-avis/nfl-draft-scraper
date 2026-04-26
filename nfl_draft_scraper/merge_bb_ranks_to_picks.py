@@ -256,9 +256,11 @@ def _fuzzy_match_player(
 # Columns to extract from the combined big board CSV into the per-player lookup.
 _BB_RANK_COLUMNS: list[str] = [
     "WL",
+    "WL_Variance",
     "MDDB",
     "JLBB",
     "Consensus",
+    "Consensus_SE",
     "JL_Avg",
     "JL_SD",
     "JL_Sources",
@@ -368,9 +370,11 @@ def _reorder_and_save(
     ]
     rank_cols: list[str] = [
         "WL Rank",
+        "WL_Variance",
         "MDDB Rank",
         "JLBB Rank",
         "Consensus",
+        "Consensus_SE",
         "JL_Avg",
         "JL_SD",
         "JL_Sources",
