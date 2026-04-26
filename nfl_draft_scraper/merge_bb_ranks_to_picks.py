@@ -2,7 +2,8 @@
 
 For each year, matches drafted players to their big board ranks using fuzzy matching, and outputs a
 new CSV with round, round_pick, pick (overall), team, pfr_player_id, player, position, category,
-college, WL Rank, JLBB Rank, Consensus, JL_Avg, JL_SD, JL_Sources, Sources, yearly AVs, career AV,
+college, WL Rank, MDDB Rank, JLBB Rank, Consensus, JL_Avg, JL_SD, JL_Sources, Sources, yearly AVs,
+career AV,
 and weighted career AV.
 
 Output: draft_picks_with_big_board_ranks_<year>.csv for each year.
@@ -255,6 +256,7 @@ def _fuzzy_match_player(
 # Columns to extract from the combined big board CSV into the per-player lookup.
 _BB_RANK_COLUMNS: list[str] = [
     "WL",
+    "MDDB",
     "JLBB",
     "Consensus",
     "JL_Avg",
@@ -267,6 +269,7 @@ _BB_RANK_COLUMNS: list[str] = [
 # that need renaming are listed here.
 _BB_COL_RENAME: dict[str, str] = {
     "WL": "WL Rank",
+    "MDDB": "MDDB Rank",
     "JLBB": "JLBB Rank",
 }
 
@@ -365,6 +368,7 @@ def _reorder_and_save(
     ]
     rank_cols: list[str] = [
         "WL Rank",
+        "MDDB Rank",
         "JLBB Rank",
         "Consensus",
         "JL_Avg",

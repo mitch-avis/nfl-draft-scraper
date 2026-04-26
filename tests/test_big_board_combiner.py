@@ -308,3 +308,57 @@ class TestExtractJlSourceRanks:
         )
         result = _extract_jl_source_ranks(jl_df)
         assert result["Alice"] == []
+
+
+class TestBuildCombinedRowsWithMddb:
+    """Tests for _build_combined_rows when MDDB is supplied as a third source."""
+
+    def test_mddb_contributes_to_consensus(self):
+        """Verify MDDB rank participates in the weighted consensus alongside WL."""
+        from nfl_draft_scraper.big_board_combiner import MDDB_WEIGHT
+
+        wl_df = pl.DataFrame({"name": ["Alice"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        jlbb_df = pl.DataFrame(
+            {"name": ["Bob"], "rank": [9], "pos": ["WR"], "school": ["Stanford"]}
+        )
+        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [4], "pos": ["QB"], "school": ["MIT"]})
+        rows = _build_combined_rows(
+            ["Alice"],
+            wl_df,
+            jlbb_df,
+            ["Alice"],
+            ["Bob"],
+            jl_source_ranks={},
+            mddb_df=mddb_df,
+            mddb_names=["Alice"],
+        )
+        assert rows[0]["WL"] == 2.0
+        assert rows[0]["MDDB"] == 4.0
+        assert rows[0]["Consensus"] == pytest.approx(3.0)
+        assert rows[0]["Sources"] == WL_WEIGHT + MDDB_WEIGHT
+
+    def test_only_mddb_has_player(self):
+        """Verify pos/school fall back to MDDB when WL and JLBB lack the player."""
+        from nfl_draft_scraper.big_board_combiner import MDDB_WEIGHT
+
+        wl_df = pl.DataFrame({"name": ["Bob"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        jlbb_df = pl.DataFrame(
+            {"name": ["Bob"], "rank": [1], "pos": ["WR"], "school": ["Stanford"]}
+        )
+        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [7], "pos": ["DE"], "school": ["Yale"]})
+        rows = _build_combined_rows(
+            ["Alice"],
+            wl_df,
+            jlbb_df,
+            ["Bob"],
+            ["Bob"],
+            jl_source_ranks={},
+            mddb_df=mddb_df,
+            mddb_names=["Alice"],
+        )
+        assert rows[0]["MDDB"] == 7.0
+        assert rows[0]["WL"] is None
+        assert rows[0]["Position"] == "DE"
+        assert rows[0]["School"] == "Yale"
+        assert rows[0]["Consensus"] == pytest.approx(7.0)
+        assert rows[0]["Sources"] == MDDB_WEIGHT

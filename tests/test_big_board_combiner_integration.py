@@ -106,3 +106,34 @@ class TestMain:
 
         assert (tmp_path / "combined_big_board_2020.csv").exists()
         assert (tmp_path / "combined_big_board_2021.csv").exists()
+
+
+class TestCombineYearWithMddb:
+    """Tests for _combine_year when an MDDB CSV is present."""
+
+    def test_combines_three_boards_when_mddb_present(self, tmp_path, monkeypatch):
+        """Verify MDDB CSV contributes an MDDB column when the file exists for the year."""
+        monkeypatch.setattr("nfl_draft_scraper.big_board_combiner.constants.DATA_PATH", tmp_path)
+
+        wl = pl.DataFrame({"name": ["Alice"], "rank": [1], "pos": ["QB"], "school": ["MIT"]})
+        jlbb = pl.DataFrame(
+            {
+                "name": ["Alice"],
+                "rank": [3],
+                "pos": ["QB"],
+                "school": ["MIT"],
+                "ESPN": [2],
+            }
+        )
+        mddb = pl.DataFrame({"name": ["Alice"], "rank": [2], "pos": ["QB"], "school": ["MIT"]})
+        wl.write_csv(tmp_path / "wl_big_board_2022.csv")
+        jlbb.write_csv(tmp_path / "jl_big_board_2022.csv")
+        mddb.write_csv(tmp_path / "mddb_big_board_2022.csv")
+
+        _combine_year(2022)
+
+        result = pl.read_csv(tmp_path / "combined_big_board_2022.csv")
+        assert "MDDB" in result.columns
+        alice = result.filter(pl.col("Player") == "Alice").row(0, named=True)
+        assert alice["WL"] == 1.0
+        assert alice["MDDB"] == 2.0
