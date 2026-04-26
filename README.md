@@ -25,10 +25,13 @@ Value (AV) metrics from Pro Football Reference.
 ## Features
 
 - **Multi-source big board scraping** — collects prospect rankings from Wide Left's Arif Hasan
-  consensus board (WL) and Jacklich10 (JLBB)
+  consensus board (WL), Jacklich10 (JLBB), and (optionally, when an `mddb_big_board_{year}.csv`
+  is already present) Mock Draft Database (MDDB)
 - **Fuzzy name matching** — reconciles player names across sources using `difflib` similarity
   matching
-- **Combined rankings** — averages rankings from multiple big boards into a unified prospect ranking
+- **Inverse-variance weighted consensus** — combines source ranks using each source's published
+  or empirical uncertainty, with a per-player `Consensus_SE` so polarizing prospects get wider
+  error bars than well-agreed ones
 - **Draft picks cleaning** — filters and normalizes raw draft pick data
 - **Approximate Value enrichment** — retrieves AV stats via `sportsipy` with Pro Football Reference
   HTML fallback
@@ -43,7 +46,7 @@ nfl-draft-scraper/
 ├── nfl_draft_scraper/
 │   ├── __init__.py
 │   ├── constants.py              # Paths, year range, base URLs
-│   ├── big_board_combiner.py     # Combine WL + JLBB boards
+│   ├── big_board_combiner.py     # Combine WL + JLBB (+ optional MDDB) boards
 │   ├── draft_picks_cleaner.py    # Clean raw draft picks CSV
 │   ├── jl_bb_scraper.py          # Playwright scraper for jacklich10.com
 │   ├── wl_bb_scraper.py          # CSV scraper for Arif Hasan's Wide Left big boards
@@ -102,7 +105,7 @@ python -m nfl_draft_scraper.pipeline
 python -m nfl_draft_scraper.pipeline --force
 
 # Run specific stages only
-python -m nfl_draft_scraper.pipeline scrape-mddb combine merge
+python -m nfl_draft_scraper.pipeline scrape-wl combine merge
 
 # Force a specific stage
 python -m nfl_draft_scraper.pipeline scrape-av --force
@@ -110,14 +113,18 @@ python -m nfl_draft_scraper.pipeline scrape-av --force
 
 **Available stages (in dependency order):**
 
-| Stage         | Description                         | Output                                        |
-| ------------- | ----------------------------------- | --------------------------------------------- |
-| `scrape-wl`   | Scrape Wide Left consensus boards   | `wl_big_board_{year}.csv`                     |
-| `scrape-jlbb` | Scrape JLBB big boards (Playwright) | `jl_big_board_{year}.csv`                     |
-| `combine`     | Fuzzy-match and merge both sources  | `combined_big_board_{year}.csv`               |
-| `clean-picks` | Clean raw draft picks CSV           | `cleaned_draft_picks.csv`                     |
-| `scrape-av`   | Enrich picks with AV data           | `cleaned_draft_picks_with_av.csv`             |
-| `merge`       | Merge big board ranks into picks    | `draft_picks_with_big_board_ranks_{year}.csv` |
+| Stage         | Description                                  | Output                                        |
+| ------------- | -------------------------------------------- | --------------------------------------------- |
+| `scrape-wl`   | Scrape Wide Left consensus boards            | `wl_big_board_{year}.csv`                     |
+| `scrape-jlbb` | Scrape JLBB big boards (Playwright)          | `jl_big_board_{year}.csv`                     |
+| `combine`     | Inverse-variance merge of WL + JLBB (+ MDDB) | `combined_big_board_{year}.csv`               |
+| `clean-picks` | Clean raw draft picks CSV                    | `cleaned_draft_picks.csv`                     |
+| `scrape-av`   | Enrich picks with AV data                    | `cleaned_draft_picks_with_av.csv`             |
+| `merge`       | Merge big board ranks into picks             | `draft_picks_with_big_board_ranks_{year}.csv` |
+
+MDDB is not scraped by this project (the source moved behind a paywall). Years for which
+`data/mddb_big_board_{year}.csv` already exists on disk will have MDDB included in the combined
+board automatically; years without that file will combine WL + JLBB only.
 
 ### Individual Stages
 
@@ -193,9 +200,20 @@ already exists:
 Each stage reads from the output of previous stages. The orchestrator runs them sequentially;
 steps 1–2 are independent of steps 4–5, so either group can be skipped or forced on its own.
 
-**Final output columns** (per-year CSVs): `round`, `round_pick`, `overall_pick`, `team`,
-`pfr_player_id`, `player`, `position`, `category`, `college`, `WL Rank`, `JLBB Rank`, `AvgRank`,
-plus per-season AV columns, `career`, and `weighted_career`.
+**Combined big board columns** (`combined_big_board_{year}.csv`): `Player`, `Position`, `School`,
+`WL`, `WL_Variance`, `MDDB` (when available), `JLBB`, `JL_Avg`, `JL_SD`, `JL_Sources`,
+`Consensus`, `Consensus_SE`, `Sources`.
+
+`Consensus` is the inverse-variance weighted mean of the available source ranks. Per-source
+standard errors are derived from WL's published `variance` score, JL's empirical SD across its
+individual sources, and a fixed prior for MDDB. `Consensus_SE` is the standard error of the
+weighted mean. `Sources` is the human-readable sum of effective independent voters.
+
+**Final per-year merged columns** (`draft_picks_with_big_board_ranks_{year}.csv`): `round`,
+`round_pick`, `overall_pick`, `team`, `pfr_player_id`, `player`, `position`, `category`,
+`college`, `WL Rank`, `WL_Variance`, `MDDB Rank`, `JLBB Rank`, `Consensus`, `Consensus_SE`,
+`JL_Avg`, `JL_SD`, `JL_Sources`, `Sources`, plus per-season AV columns, `career`,
+`weighted_career`, `draft_team_career`, `draft_team_weighted_career`, `w_av`, and `dr_av`.
 
 ## License
 
