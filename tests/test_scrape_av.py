@@ -296,7 +296,10 @@ class TestInitializeDraftPicksDf:
             checkpoint_path=str(checkpoint),
             av_columns=["2020"],
         )
-        assert rows == [{"pfr_player_id": "x", "team": "DAL", "av_complete": True}]
+        assert rows[0]["pfr_player_id"] == "x"
+        assert rows[0]["team"] == "DAL"
+        assert rows[0]["av_complete"] is True
+        assert rows[0]["2020"] is None
 
     def test_resumes_from_checkpoint_without_av_complete_column(self, tmp_path):
         """Verify resume injects av_complete=False when the column is missing."""
