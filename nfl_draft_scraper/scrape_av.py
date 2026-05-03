@@ -170,6 +170,7 @@ def _initialize_draft_picks_df(
         if "av_complete" not in df.columns:
             for row in rows:
                 row["av_complete"] = False
+        rows = _merge_new_draft_rows(rows, draft_path, av_columns)
     else:
         df = read_df_from_csv(draft_path)
         rows = df.to_dicts()
@@ -179,6 +180,57 @@ def _initialize_draft_picks_df(
                 row[col] = None
             row["av_complete"] = False
     return rows
+
+
+def _merge_new_draft_rows(
+    rows: list[dict[str, Any]],
+    draft_path: str,
+    av_columns: list[str],
+) -> list[dict[str, Any]]:
+    """Merge rows from the source draft CSV that are absent from the checkpoint rows.
+
+    Rows are identified by ``(pfr_player_id, season)``. Any row in the source file not present in
+    *rows* is appended with all AV columns initialised to ``None`` and ``av_complete=False``.
+    Existing rows also receive any new year columns in *av_columns* that are not yet present (set
+    to ``None``), for example when a new tracking year has been added since the checkpoint was
+    written.
+
+    Args:
+        rows: Existing checkpoint rows (modified in place for new year columns).
+        draft_path: Path to ``cleaned_draft_picks.csv``.
+        av_columns: Year columns that must be present in every row.
+
+    Returns:
+        The merged list — original rows (with missing *av_columns* added) plus any new rows from
+        the source.
+
+    """
+    # Ensure all av_columns are present in existing rows (e.g. a new tracking year was added).
+    for row in rows:
+        for col in av_columns:
+            if col not in row:
+                row[col] = None
+
+    if not os.path.exists(draft_path):
+        return rows
+
+    existing_keys = {
+        (str(row.get("pfr_player_id", "")), str(row.get("season", ""))) for row in rows
+    }
+
+    source_df = read_df_from_csv(draft_path)
+    new_rows: list[dict[str, Any]] = []
+    for source_row in source_df.to_dicts():
+        key = (str(source_row.get("pfr_player_id", "")), str(source_row.get("season", "")))
+        if key not in existing_keys:
+            for col in [*av_columns, *_AV_SUMMARY_COLUMNS]:
+                source_row[col] = None
+            source_row["av_complete"] = False
+            new_rows.append(source_row)
+
+    if new_rows:
+        log.info("➕ Merged %d new row(s) from source into checkpoint", len(new_rows))
+    return rows + new_rows
 
 
 def _is_missing_player_id(pid: Any) -> bool:
