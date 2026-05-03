@@ -30,8 +30,6 @@ class TestReorderAndSave:
                 "Consensus": [1.0],
                 "JL_Avg": [1.5],
                 "JL_SD": [0.5],
-                "JL_Sources": [10],
-                "Sources": [16],
                 "2021": [5],
                 "career": [5],
                 "weighted_career": [5.0],
@@ -47,8 +45,8 @@ class TestReorderAndSave:
         assert "Consensus" in result.columns
         assert "JL_Avg" in result.columns
         assert "JL_SD" in result.columns
-        assert "JL_Sources" in result.columns
-        assert "Sources" in result.columns
+        assert "JL_Sources" not in result.columns
+        assert "Sources" not in result.columns
         assert "AvgRank" not in result.columns
 
 
@@ -88,9 +86,7 @@ class TestMergeBigBoardRanksForYear:
                 "JLBB": [1, 30],
                 "JL_Avg": [1.5, 28.0],
                 "JL_SD": [0.5, 3.0],
-                "JL_Sources": [10, 8],
                 "Consensus": [1.2, 26.1],
-                "Sources": [16, 14],
             }
         )
         bb_df.write_csv(tmp_path / "combined_big_board_2020.csv")
@@ -105,8 +101,8 @@ class TestMergeBigBoardRanksForYear:
         assert "Consensus" in result.columns
         assert "JL_Avg" in result.columns
         assert "JL_SD" in result.columns
-        assert "JL_Sources" in result.columns
-        assert "Sources" in result.columns
+        assert "JL_Sources" not in result.columns
+        assert "Sources" not in result.columns
         assert "AvgRank" not in result.columns
         assert result.height == 2
 
