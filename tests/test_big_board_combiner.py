@@ -4,8 +4,6 @@ import polars as pl
 import pytest
 
 from nfl_draft_scraper.big_board_combiner import (
-    MDDB_NEFF,
-    WL_NEFF,
     _best_match,
     _build_combined_rows,
     _clean_df,
@@ -196,13 +194,10 @@ class TestBuildCombinedRows:
         assert rows[0]["WL"] == 1.0
         assert rows[0]["JLBB"] == 3.0
         assert rows[0]["JL_Avg"] == pytest.approx(4.0)
-        assert rows[0]["JL_Sources"] == 3
         # Consensus must lie strictly between WL (1) and JL_Avg (4).
         consensus = rows[0]["Consensus"]
         assert isinstance(consensus, float)
         assert 1.0 < consensus < 4.0
-        # Sources column reports effective independent voters.
-        assert rows[0]["Sources"] == WL_NEFF + 3
         consensus_se = rows[0]["Consensus_SE"]
         assert isinstance(consensus_se, float)
         assert consensus_se > 0
@@ -218,9 +213,7 @@ class TestBuildCombinedRows:
             ["Alice"], wl_df, jlbb_df, ["Bob"], ["Alice"], jl_source_ranks=jl_source_ranks
         )
         assert rows[0]["JL_Avg"] == pytest.approx(2.0)
-        assert rows[0]["JL_Sources"] == 2
         assert rows[0]["Consensus"] == pytest.approx(2.0)
-        assert rows[0]["Sources"] == 2
 
     def test_weighted_consensus_only_wl(self):
         """Verify consensus equals WL rank when only WL is present."""
@@ -232,9 +225,7 @@ class TestBuildCombinedRows:
             ["Alice"], wl_df, jlbb_df, ["Alice"], ["Bob"], jl_source_ranks={}
         )
         assert rows[0]["Consensus"] == pytest.approx(5.0)
-        assert rows[0]["Sources"] == WL_NEFF
         assert rows[0]["JL_Avg"] is None
-        assert rows[0]["JL_Sources"] is None
 
     def test_weighted_consensus_neither_source(self):
         """Verify consensus is None when neither source has the player."""
@@ -244,7 +235,6 @@ class TestBuildCombinedRows:
         )
         rows = _build_combined_rows(["ZZZZZ"], wl_df, jlbb_df, ["Bob"], ["Bob"], jl_source_ranks={})
         assert rows[0]["Consensus"] is None
-        assert rows[0]["Sources"] is None
 
     def test_jl_sd_populated(self):
         """Verify JL_SD is computed from JL source ranks."""
@@ -255,6 +245,67 @@ class TestBuildCombinedRows:
             ["Alice"], wl_df, jlbb_df, ["Alice"], ["Alice"], jl_source_ranks=jl_source_ranks
         )
         assert rows[0]["JL_SD"] == pytest.approx(0.0)
+
+
+class TestBuildCombinedRowsNoWl:
+    """Tests for _build_combined_rows when wl_df and wl_names are None."""
+
+    def test_jl_only_no_wl(self):
+        """Verify consensus is derived from JL alone when wl_df is None."""
+        jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [3], "pos": ["WR"], "school": ["Yale"]})
+        rows = _build_combined_rows(
+            ["Alice"],
+            None,
+            jlbb_df,
+            None,
+            ["Alice"],
+            jl_source_ranks={"Alice": [3.0]},
+        )
+        assert len(rows) == 1
+        assert rows[0]["WL"] is None
+        assert rows[0]["WL_Variance"] is None
+        assert rows[0]["JLBB"] == 3.0
+        assert rows[0]["Consensus"] == pytest.approx(3.0)
+
+    def test_mddb_and_jl_no_wl(self):
+        """Verify MDDB and JL contribute to consensus when wl_df is None."""
+        jlbb_df = pl.DataFrame({"name": ["Alice"], "rank": [4], "pos": ["WR"], "school": ["Yale"]})
+        mddb_df = pl.DataFrame({"name": ["Alice"], "rank": [2], "pos": ["WR"], "school": ["Yale"]})
+        rows = _build_combined_rows(
+            ["Alice"],
+            None,
+            jlbb_df,
+            None,
+            ["Alice"],
+            jl_source_ranks={"Alice": [4.0]},
+            mddb_df=mddb_df,
+            mddb_names=["Alice"],
+        )
+        assert rows[0]["WL"] is None
+        assert rows[0]["MDDB"] == 2.0
+        assert rows[0]["JLBB"] == 4.0
+        assert rows[0]["Consensus"] is not None
+
+    def test_school_falls_back_through_mddb_and_jl_when_no_wl(self):
+        """Verify school is taken from MDDB when WL is absent and MDDB has the player."""
+        jlbb_df = pl.DataFrame(
+            {"name": ["Bob"], "rank": [1], "pos": ["QB"], "school": ["Stanford"]}
+        )
+        mddb_df = pl.DataFrame(
+            {"name": ["Alice"], "rank": [5], "pos": ["DE"], "school": ["Harvard"]}
+        )
+        rows = _build_combined_rows(
+            ["Alice"],
+            None,
+            jlbb_df,
+            None,
+            ["Bob"],
+            jl_source_ranks={},
+            mddb_df=mddb_df,
+            mddb_names=["Alice"],
+        )
+        assert rows[0]["Position"] == "DE"
+        assert rows[0]["School"] == "Harvard"
 
 
 class TestExtractJlSourceRanks:
@@ -342,7 +393,6 @@ class TestBuildCombinedRowsWithMddb:
         assert rows[0]["MDDB"] == 4.0
         # With identical priors WL == MDDB weight, so consensus is the simple mean.
         assert rows[0]["Consensus"] == pytest.approx(3.0)
-        assert rows[0]["Sources"] == WL_NEFF + MDDB_NEFF
 
     def test_only_mddb_has_player(self):
         """Verify pos/school fall back to MDDB when WL and JLBB lack the player."""
@@ -366,7 +416,6 @@ class TestBuildCombinedRowsWithMddb:
         assert rows[0]["Position"] == "DE"
         assert rows[0]["School"] == "Yale"
         assert rows[0]["Consensus"] == pytest.approx(7.0)
-        assert rows[0]["Sources"] == MDDB_NEFF
 
 
 class TestInverseVarianceEdgeCases:
@@ -386,10 +435,8 @@ class TestInverseVarianceEdgeCases:
             ["Alice"],
             jl_source_ranks={"Alice": [1.0]},
         )
-        assert rows[0]["JL_Sources"] == 1
         assert rows[0]["JL_SD"] is None
         assert rows[0]["Consensus"] == pytest.approx(1.0)
-        assert rows[0]["Sources"] == 1
 
     def test_wl_variance_is_propagated_to_output(self):
         """Verify WL_Variance is read from the WL DataFrame and included in the row."""
