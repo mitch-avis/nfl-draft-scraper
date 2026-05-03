@@ -48,7 +48,7 @@ ruff==0.15.12
     # via -r requirements-dev.in
 termcolor==3.3.0
     # via pytest-sugar
-ty==0.0.32
+ty==0.0.34
     # via -r requirements-dev.in
 typing-extensions==4.15.0
     # via pyright
