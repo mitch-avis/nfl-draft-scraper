@@ -565,8 +565,6 @@ class TestGetRankLists:
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
                 "JL_SD": 1.0,
-                "JL_Sources": 3,
-                "Sources": 9,
             }
         }
         bb_positions = {"alice": "QB"}
@@ -577,8 +575,8 @@ class TestGetRankLists:
         assert result["Consensus"] == [2.0]
         assert result["JL_Avg"] == [4.0]
         assert result["JL_SD"] == [1.0]
-        assert result["JL_Sources"] == [3]
-        assert result["Sources"] == [9]
+        assert "JL_Sources" not in result
+        assert "Sources" not in result
 
     def test_no_match(self):
         """Verify no match."""
@@ -597,8 +595,6 @@ class TestGetRankLists:
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
                 "JL_SD": 1.0,
-                "JL_Sources": 3,
-                "Sources": 9,
             }
         }
         bb_positions = {"alice": "QB"}
@@ -609,8 +605,8 @@ class TestGetRankLists:
         assert result["Consensus"] == [None]
         assert result["JL_Avg"] == [None]
         assert result["JL_SD"] == [None]
-        assert result["JL_Sources"] == [None]
-        assert result["Sources"] == [None]
+        assert "JL_Sources" not in result
+        assert "Sources" not in result
 
     def test_multiple_players(self):
         """Verify multiple players."""
@@ -629,8 +625,6 @@ class TestGetRankLists:
                 "Consensus": 2.0,
                 "JL_Avg": 4.0,
                 "JL_SD": 1.0,
-                "JL_Sources": 3,
-                "Sources": 9,
             },
             "bob": {
                 "WL": 5,
@@ -638,8 +632,6 @@ class TestGetRankLists:
                 "Consensus": 6.0,
                 "JL_Avg": 7.0,
                 "JL_SD": 2.0,
-                "JL_Sources": 5,
-                "Sources": 11,
             },
         }
         bb_positions = {"alice": "QB", "bob": "RB"}
@@ -666,8 +658,6 @@ class TestGetRankLists:
                 "Consensus": 100.0,
                 "JL_Avg": 107.0,
                 "JL_SD": 5.0,
-                "JL_Sources": 10,
-                "Sources": 16,
             }
         }
         bb_positions = {"ty robinson": "DL"}
@@ -694,8 +684,6 @@ class TestGetRankLists:
                 "Consensus": 46.5,
                 "JL_Avg": 45.9,
                 "JL_SD": 11.5,
-                "JL_Sources": 16,
-                "Sources": 22,
             }
         }
         bb_positions = {"carlos basham jr.": "EDGE"}
@@ -722,8 +710,6 @@ class TestGetRankLists:
                 "Consensus": 85.1,
                 "JL_Avg": 85.5,
                 "JL_SD": 28.0,
-                "JL_Sources": 17,
-                "Sources": 23,
             }
         }
         bb_positions = {"jartavius martin": "S"}
