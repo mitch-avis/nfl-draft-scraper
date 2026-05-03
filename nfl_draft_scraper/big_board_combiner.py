@@ -22,10 +22,7 @@ Per-source standard errors
   together with ``MDDB_NEFF`` (also 20). MDDB will not be updated after 2026 (paywall).
 * **JL** -- We have the actual individual source ranks, so we use the empirical SD across them
   with a small ``JL_SD_FLOOR`` to prevent overconfidence when sources happen to coincide; the SE
-  is then ``JL_SD / sqrt(JL_Sources)``. With only one JL source we fall back to a broad prior.
-
-The ``Sources`` column is preserved as the sum of effective independent voters contributed by
-each available source, for human reading; it is no longer used in the math.
+  is then ``JL_SD / sqrt(n_sources)``. With only one JL source we fall back to a broad prior.
 """
 
 from __future__ import annotations
@@ -151,9 +148,9 @@ def _jl_standard_error(jl_sd: float | None, jl_n: int) -> float:
 
 def _build_combined_rows(
     all_players: Iterable[str],
-    wl_df: pl.DataFrame,
+    wl_df: pl.DataFrame | None,
     jlbb_df: pl.DataFrame,
-    wl_names: list[str],
+    wl_names: list[str] | None,
     jlbb_names: list[str],
     *,
     jl_source_ranks: dict[str, list[float]],
@@ -162,6 +159,7 @@ def _build_combined_rows(
 ) -> list[dict[str, str | float | int | None]]:
     """Build combined rows for all players with inverse-variance weighted consensus.
 
+    ``wl_df`` and ``wl_names`` are optional; when both are ``None`` the WL source is skipped.
     ``mddb_df`` and ``mddb_names`` are optional; when both are provided the MDDB rank is included
     in the weighted consensus and surfaced as the ``MDDB`` column.
     """
@@ -169,7 +167,11 @@ def _build_combined_rows(
 
     combined_rows: list[dict[str, str | float | int | None]] = []
     for player in all_players:
-        wl_record = _get_record(player, wl_df, wl_names)
+        wl_record = (
+            _get_record(player, wl_df, wl_names)
+            if wl_df is not None and wl_names is not None
+            else None
+        )
         jlbb_record = _get_record(player, jlbb_df, jlbb_names)
         mddb_record = (
             _get_record(player, mddb_df, mddb_names)
@@ -209,25 +211,21 @@ def _build_combined_rows(
         # --- Inverse-variance weighted consensus across whichever sources are present ---
         precision_sum = 0.0  # sum of 1 / sigma^2
         weighted_sum = 0.0  # sum of rank / sigma^2
-        sources_eff = 0  # human-readable sum of effective independent voters
 
         if wl_rank is not None:
             se_wl = _wl_standard_error(wl_variance)
             w = 1.0 / (se_wl * se_wl)
             precision_sum += w
             weighted_sum += wl_rank * w
-            sources_eff += WL_NEFF
         if mddb_rank is not None:
             w = 1.0 / (mddb_se * mddb_se)
             precision_sum += w
             weighted_sum += mddb_rank * w
-            sources_eff += MDDB_NEFF
         if jl_avg is not None:
             se_jl = _jl_standard_error(jl_sd, jl_n)
             w = 1.0 / (se_jl * se_jl)
             precision_sum += w
             weighted_sum += jl_avg * w
-            sources_eff += jl_n
 
         consensus: float | None
         consensus_se: float | None
@@ -263,10 +261,8 @@ def _build_combined_rows(
                 "JLBB": jlbb_rank,
                 "JL_Avg": round(jl_avg, 4) if jl_avg is not None else None,
                 "JL_SD": round(jl_sd, 4) if jl_sd is not None else None,
-                "JL_Sources": jl_n if jl_n > 0 else None,
                 "Consensus": round(consensus, 4) if consensus is not None else None,
                 "Consensus_SE": round(consensus_se, 4) if consensus_se is not None else None,
-                "Sources": sources_eff if sources_eff > 0 else None,
             }
         )
     return combined_rows
@@ -302,30 +298,37 @@ _COMBINED_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "JLBB": pl.Float64,
     "JL_Avg": pl.Float64,
     "JL_SD": pl.Float64,
-    "JL_Sources": pl.Int64,
     "Consensus": pl.Float64,
     "Consensus_SE": pl.Float64,
-    "Sources": pl.Int64,
 }
 
 
 def _combine_year(year: int) -> None:
-    """Read WL and JL CSVs (and optional MDDB) for the given year, clean and combine them.
+    """Read JL CSV and optional WL and MDDB CSVs for the given year, clean and combine them.
 
-    Fuzzy-match names and write out a combined CSV with columns: Player, Position, School, WL,
-    WL_Variance, MDDB, JLBB, JL_Avg, JL_SD, JL_Sources, Consensus, Consensus_SE, Sources.
+    WL data is only available from 2024 onward; when the WL file is absent the source is skipped.
+    MDDB data is available through 2026; when absent it is also skipped. Fuzzy-match names and
+    write out a combined CSV with columns: Player, Position, School, WL, WL_Variance, MDDB, JLBB,
+    JL_Avg, JL_SD, Consensus, Consensus_SE.
     """
     log.info("Combining big boards for year %s", year)
     wl_path = constants.DATA_PATH / f"wl_big_board_{year}.csv"
     jlbb_path = constants.DATA_PATH / f"jl_big_board_{year}.csv"
     mddb_path = constants.DATA_PATH / f"mddb_big_board_{year}.csv"
-    log.info("Reading WL from %s", wl_path)
     log.info("Reading JLBB from %s", jlbb_path)
 
-    wl_df = _clean_df(
-        pl.read_csv(wl_path, null_values=["NA"]),
-        ["name", "pos", "school", "rank", "variance"],
-    )
+    # WL is optional: consensus big board data is only available from 2024 onward.
+    wl_df: pl.DataFrame | None = None
+    wl_names: list[str] | None = None
+    if wl_path.is_file():
+        log.info("Reading WL from %s", wl_path)
+        wl_df = _clean_df(
+            pl.read_csv(wl_path, null_values=["NA"]),
+            ["name", "pos", "school", "rank", "variance"],
+        )
+        wl_names = wl_df["name"].to_list()
+    else:
+        log.info("No WL file at %s; skipping WL source", wl_path)
 
     # Read the full JL CSV to access individual source rank columns
     jl_raw = pl.read_csv(jlbb_path, null_values=["NA"])
@@ -351,9 +354,10 @@ def _combine_year(year: int) -> None:
     else:
         log.info("No MDDB file at %s; skipping MDDB source", mddb_path)
 
-    wl_names = wl_df["name"].to_list()
     jlbb_names = jlbb_df["name"].to_list()
-    all_player_set: set[str] = set(wl_names) | set(jlbb_names)
+    all_player_set: set[str] = set(jlbb_names)
+    if wl_names is not None:
+        all_player_set |= set(wl_names)
     if mddb_names is not None:
         all_player_set |= set(mddb_names)
     all_players = sorted(all_player_set)
