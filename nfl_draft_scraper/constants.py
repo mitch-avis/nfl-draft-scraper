@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
 DATA_PATH = ROOT_DIR / "data"
 
-START_YEAR = 2024
+START_YEAR = 2016
 
 
 def _most_recent_completed_season() -> int:
